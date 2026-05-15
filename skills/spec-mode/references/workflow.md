@@ -6,13 +6,13 @@ Operational reference for the rules defined in `SKILL.md`. Activation conditions
 
 Activation rules are defined in `SKILL.md §Activation Guard` and apply here without exception. Do not re-state or paraphrase them. If the current request does not satisfy SKILL.md activation conditions, do not create a spec directory and do not run the phase-gated workflow.
 
-## 1. `/start` Intake
+## 1. `/spec` Intake
 
 Parse user input as:
 
 ```text
-/start <requirement-or-path> [extra instructions]
-/start --persist <requirement-or-path>
+/spec <requirement-or-path> [extra instructions]
+/spec --persist <requirement-or-path>
 /continue [spec-slug]
 /status
 /end
@@ -30,8 +30,8 @@ Intake rules:
 
 Persistent command rules:
 
-- `/start <requirement>` — one-shot. Runs the workflow without updating `.active-spec-mode.json`.
-- `/start --persist <requirement>` — persistent. Initializes spec and starts an active session.
+- `/spec <requirement>` — one-shot. Runs the workflow without updating `.active-spec-mode.json`.
+- `/spec --persist <requirement>` — persistent. Initializes spec and starts an active session.
 - `/continue [slug]` — resume; multi-window aware (see §9).
 - `/status` — prints current session, spec path, phase, task counts, lock state.
 - `/end` — ends current session, releases the spec lock, **does not** delete docs.
@@ -214,7 +214,7 @@ When all required checklist rows have `结论 = 通过`, agent runs the **验收
 Steps:
 
 1. Resolve configured root: `python3 scripts/spec_vault.py get --json --configured-only`
-   - If no configured root → ask user to run `/start --set-vault` or `/start --set-root` and stop
+   - If no configured root → ask user to run `/spec --set-vault` or `/spec --set-root` and stop
 2. List specs: `python3 scripts/spec_session.py list-specs --root <root> --json`
 3. List sessions: `python3 scripts/spec_session.py list --root <root> --json`
 4. Present using **Template C — List + Numeric Selection** in `references/prompts.md` (三段固定：当前会话 / 其他窗口 / 可继续的全部 specs；锁状态用固定词；结束语固定)

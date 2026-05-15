@@ -1,6 +1,6 @@
 ---
 name: spec-mode
-description: Specification-driven workflow for requirements, technical design, task lists, implementation, acceptance, and ongoing spec iteration. Use when the user explicitly invokes /start, explicitly says to use spec mode, or the current conversation has an active persistent spec-mode session that has not been ended. Do not use for ordinary coding, planning, requirements, design, or documentation requests unless spec mode is explicitly requested or already active.
+description: Specification-driven workflow for requirements, technical design, task lists, implementation, acceptance, and ongoing spec iteration. Use when the user explicitly invokes /spec, explicitly says to use spec mode, or the current conversation has an active persistent spec-mode session that has not been ended. Do not use for ordinary coding, planning, requirements, design, or documentation requests unless spec mode is explicitly requested or already active.
 ---
 
 # Spec Mode
@@ -11,14 +11,15 @@ File-first specification-driven workflow for CLI agents (Codex, Claude Code). Ge
 
 This skill is opt-in only. Activate **only** when the user's current message contains one of:
 
-- `/start`, `/continue`, `/status`, `/end`
-- `/start -h`
-- `/start --set-vault`, `/start --set-root`, `/start --detect-vault`, `/start --vault-status`
+- `/spec`, `/continue`, `/status`, `/end`
+- `/spec -h` / `--help`
+- `/spec --persist`, `/spec --freeform`, `/spec --strict`
+- `/spec --set-vault`, `/spec --set-root`, `/spec --detect-vault`, `/spec --vault-status`, `/spec --sync-status`
 - `使用 spec 模式` / `启用 spec 模式` / `用 spec 模式` / `use spec mode`
 
 **Hard rules:**
 
-1. `/start` always activates the spec workflow — even when the requested work is to inspect or modify the `spec-mode` skill itself.
+1. `/spec` always activates the spec workflow — even when the requested work is to inspect or modify the `spec-mode` skill itself.
 2. **Command compliance**: when any spec command is triggered, follow the corresponding workflow exactly. Do not skip phases, phase gates, or confirmation steps for any reason. Commands are absolute; the assistant's judgment cannot override a command.
 3. **Persistent session exception**: if a persistent spec-mode session is active for the current conversation, route follow-up messages through this skill until the user runs `/end`.
 
@@ -42,157 +43,66 @@ These rules are checked at **every turn** of every spec-mode session. Never viol
 
 These rules trigger detectable signals (lint, `/continue` ⚠ markers, verify-lock exit codes). Treat any of those signals as a regression on your part, not a tool quirk.
 
-## Command Entry
+## Command Entry (Summary)
 
 ```text
-/start <requirement or path> [extras]            ← one-shot workflow
-/start --persist <requirement or path>           ← persistent session (shows footer)
-/continue [spec-slug]                       ← resume / switch; multi-window aware
-/status                                     ← show current session status
-/end                                        ← end persistent session (docs preserved)
+/spec <requirement or path>             ← one-shot workflow
+/spec --persist <requirement or path>   ← persistent session (footer + /end)
+/continue [spec-slug] | /status | /end  ← session control
 
-/start --set-vault <vault-path>                   ← set Obsidian vault → vault/spec-in/<os>-<user>/specs
-/start --set-root <dir>                           ← set any directory as spec root
-/start --detect-vault                             ← detect installed Obsidian vaults
-/start --vault-status                             ← show current root + obsolete-location warnings
-
-/start -h                                         ← help (output references/help-output.md verbatim, stop)
+/spec --set-vault <p> | --set-root <p> | --detect-vault | --vault-status
+/spec --freeform | --strict | --sync-status
+/spec -h                                ← help (hook-intercepted)
 ```
 
-`--set-vault` / `--set-root` may be run **at any time** (no need to `/end` first); the new value is written to `~/.config/spec-mode/config.json` immediately and used by all subsequent commands.
-
-If the text after `/start` is an existing file path, read it as the requirement source; otherwise treat it as the requirement description.
-
-### Sub-flag Dispatch (execute and stop — do NOT trigger spec workflow)
-
-| Flag | Action |
-|---|---|
-| `--set-vault <path>` | Run `python3 scripts/spec_vault.py set --vault <path>`, show output, stop. |
-| `--set-root <path>` | Run `python3 scripts/spec_vault.py set --root <path>`, show output, stop. |
-| `--detect-vault` | Run `python3 scripts/spec_vault.py detect`, show output, stop. |
-| `--vault-status` | Run `python3 scripts/spec_vault.py get`, show output, stop. |
-| `-h` / `--help` | Output `references/help-output.md` verbatim, stop. |
-| `--persist <req>` | Initialize persistent session via `spec_init.py --persistent` and start workflow. |
-| `--freeform` | Run `python3 scripts/spec_sync.py freeform on` (relax INV-1 for current spec; INV-2 still enforced), show output, stop. |
-| `--strict` | Run `python3 scripts/spec_sync.py freeform off` (restore INV-1), show output, stop. |
-| `--sync-status` | Run `python3 scripts/spec_sync.py status` (show ledger / pending sync / last violation), show output, stop. |
-
-For any of the dispatch flags above (the first five rows), **do not** run intake, do not create a spec folder, do not enter Plan-mode. Just execute the indicated script and stop.
-
-**Optional spec name prefix.** If the requirement starts with `<名称>：<内容>` (full-width `：`) or `<名称>: <内容>` (ASCII `:` followed by a space), split on the first colon:
-
-- The part **before** the colon is the **spec folder name hint**. Agent derives a semantic English slug from the hint and passes `spec_init.py --name <slug> --requirement-name "<原名称>"`. The original hint is preserved as the displayed `requirementName` in `.config.json`.
-- The part **after** the colon is the requirement source text.
-- Skip the split if the prefix looks like a path (contains `/` or `\`), a URL, or no colon appears in the first ~30 chars.
-- No colon → whole text is the requirement; agent infers the slug from the requirement content as before.
+→ **完整命令、子标志 dispatch、可选 spec 名前缀、会话模式、Helper Scripts、Hook 拦截**：`references/commands.md`
 
 ## Pre-requirements Clarification (Plan-mode)
 
-Before generating `requirements.md` / `bugfix.md`, evaluate whether the user's requirement is unambiguous enough to translate into EARS SHALL statements **without invention**.
+Before generating `requirements.md` / `bugfix.md`: evaluate whether the user's requirement is unambiguous enough to translate into EARS SHALL statements **without invention**.
 
 - **Clear enough** → proceed to workflow selection and document generation.
-- **Real ambiguity** affecting scope, behavior, UX, data, validation, or acceptance → enter clarification dialogue first. Phase stays in `intake`. **Do not write any spec document yet.**
+- **Real ambiguity** affecting scope / behavior / UX / data / validation / acceptance → enter clarification dialogue first. Phase stays in `intake`. **Do not write any spec document yet.**
 
-Clarification dialogue protocol:
+每轮 ≤5 个【阻塞】项；用户答复后用 `references/prompts.md` §澄清完成 selector 决定 `进入下一阶段` 或 `继续澄清`。**Never** invent missing scope, business rules, UI behavior, data fields, or acceptance criteria.
 
-1. Output the questions using **Template B** (开放式澄清问答) in `references/prompts.md`. Each question is labeled `【阻塞】` or `【可延后】`. Aim for ≤5 blocking items per round.
-2. End the turn. Wait for the user's reply.
-3. After the user answers, parse the response and run the **澄清完成** selector (Template A in `references/prompts.md`):
-   - `进入下一阶段` → proceed to workflow selection and document generation. Carry resolved answers into the document; unresolved items go to the `待确认问题` section.
-   - `继续澄清` → ask the next round of questions using Template B again.
-4. Never invent missing scope, business rules, UI behavior, data fields, or acceptance criteria.
-
-This is the spec-mode equivalent of agent "Plan mode": converge on intent through dialogue before any file is written.
-
-→ 详见 `references/prompts.md`（所有 prompt 输出模板、统一选择器命令、措辞禁忌）
+→ 详见 `references/prompts.md` §Template B（开放式澄清问答）+ §澄清完成
 
 ## Document Root Resolution (Iron Law)
 
 Three-tier resolution. **No project fallback, no home fallback.**
 
 1. `--root` argument or `SPEC_MODE_ROOT` env (highest)
-2. `~/.config/spec-mode/config.json` → `obsidianRoot` (set via `--set-vault`/`--set-root`; written automatically on first Obsidian detection)
-3. Auto-detect Obsidian vault → `<vault>/spec-in/<os>-<user>/specs` (and persist to config)
+2. `~/.config/spec-mode/config.json` → `obsidianRoot`
+3. Auto-detect Obsidian vault → `<vault>/spec-in/<os>-<user>/specs` (and persist)
 
-**All three miss → hard stop**, output guidance and exit:
+All three miss → **hard stop**, output guidance, exit. `/spec` and `/continue` use the **same** resolution. Never create `<project>/specs` or `~/new project/specs`.
 
-```
-未检测到 Obsidian vault，且未配置 spec 根目录。请选择以下方式之一：
-  1. 安装 Obsidian 后重试（推荐）
-  2. /start --set-vault <vault路径>
-  3. /start --set-root <自定义目录>
-```
-
-`/start` and `/continue` use the **same** resolution. Never create `<project>/specs` or `~/new project/specs`.
-
-→ 详见 `references/obsidian.md`（vault 检测、目录树、多 vault 选择）
-
-## Sessions: One-shot vs Persistent
-
-Every `/start` creates permanent documents (`requirements.md`, `design.md`, `tasks.md`, `acceptance-checklist.md`, `.config.json`). They can always be reopened via `/continue`.
-
-| | one-shot `/start` | `/start --persist` |
-|--|--|--|
-| Session after task completion | Ends | Stays active |
-| Status footer | Not shown | Shown after every response |
-| Exit | Automatic | Explicit `/end` |
-
-Persistent-mode footer (exact format, shown only in persistent mode):
-
-```
-─── spec-mode ─── spec: <slug> | session: <sessionId> | phase: <phase> | /end 退出
-```
-
-When in read-only mode (see `references/lock-protocol.md`), append ` | [只读]` before `/end 退出`.
-
-`sessionId` resolution: `$TERM_SESSION_ID` → `$SPEC_SESSION_ID` → `"default"`. Each window must use a distinct sessionId for parallel work.
-
-State files:
-
-- `<spec-dir>/.config.json` — per-spec identity, lifecycle, **lock**, sessions, iteration round
-- `<document-root>/.active-spec-mode.json` — v2 window index keyed by sessionId (slug-only, no absolute paths)
+→ 详见 `references/obsidian.md`
 
 ## Multi-Window + Lock (Iron Law)
 
 Different agent windows may work on **different** specs in parallel. The **same** spec is held by at most one session at a time via a write lock in its `.config.json`.
 
-**Before any spec document write**, perform three checks:
+**Before any spec document write**, three checks:
 
 1. **specId**: active-pointer.specId == .config.json.specId
 2. **boundary**: spec_dir is inside documentRoot (`spec_session.ensure_within_root`)
-3. **lock**: `python3 scripts/spec_session.py verify-lock <spec-dir> --session <id>` returns `ok`
+3. **lock**: `spec_session.py verify-lock <spec-dir> --session <id>` returns `ok`
 
-Any failure → refuse the write, surface the error, do not silently continue.
+Any failure → refuse the write, surface the error, do not silently continue. `/continue <slug>` on a locked spec must offer three options: 强制接管 / 只读查看 / 取消. Heartbeat before every Edit/Write; stale lock = 30 min.
 
-`/continue <slug>` on a locked spec must offer three options to the user: 强制接管 / 只读查看 / 取消. Never auto-evict without user choice.
-
-Heartbeat: agent must call `python3 scripts/spec_session.py heartbeat <spec-dir>` before every Edit/Write on a spec document. Stale lock threshold: 30 minutes (`SPEC_MODE_LOCK_STALE_SECONDS` to override).
-
-→ 详见 `references/lock-protocol.md`（5 个 lock 子命令、接管协议、只读模式、被驱逐窗口行为）
+→ 详见 `references/lock-protocol.md`
 
 ## Phase Gates
 
-Phase order (no skipping confirmations):
+Phase order (**no skipping**): requirements (or bugfix) → Confirm → design → Confirm → tasks → Confirm → ask whether to execute → Code → validate → accept → iteration.
 
-1. requirements (or bugfix)
-2. **Confirm**
-3. design
-4. **Confirm**
-5. tasks
-6. **Confirm**
-7. Ask whether to execute tasks
-8. Code → validate → accept
-9. (post-acceptance) `iteration`
+At each gate, in the same response: (1) show document path, summary, key changes, unresolved questions; (2) invoke `spec_choice.py` — in non-interactive shells (Claude Code Bash, CI) the script prints the option block + `AWAITING_USER_CHOICE` sentinel on stdout and exits 0; relay stdout **verbatim** and end the turn; (3) **end the turn**.
 
-Confirmation protocol — for every phase boundary, in the same response:
-1. Show the document path, summary, key changes, unresolved questions
-2. Show confirmation options via `scripts/spec_choice.py`. In a non-interactive shell (Claude Code Bash, CI) the script prints the option block + `AWAITING_USER_CHOICE` sentinel on stdout and exits 0 — relay the stdout block to the user **verbatim** and end the turn. Never re-run the script to "retry" the prompt.
-3. **End the turn.** Never proceed in the same response.
+Auto-selecting a default at a phase gate is **never** acceptable.
 
-Auto-selecting a default at a phase gate is never acceptable.
-
-→ 详见 `references/workflow.md` §Phase Gates（完整 9 步、`spec_choice.py` 调用范本）
-→ 详见 `references/iteration.md`（iteration 阶段、子循环、文档累积规则）
+→ 详见 `references/workflow.md` §Phase Gates Detailed Sub-steps + `references/iteration.md`
 
 ## Document-first Discipline
 
@@ -202,9 +112,9 @@ Spec documents are the sole persistent memory. Any change not written to a docum
 
 1. **Requirement change** → update `requirements.md` / `bugfix.md` **first**, then continue
 2. **Design decision** → update `design.md` **first**, then implementation
-3. **Task status change** → update `tasks.md` **immediately** when a task starts (`[~]`), completes (`[x]`), or is blocked
-4. **New task or sub-task** → append to `tasks.md` **before** starting it
-5. **requirements.md / bugfix.md modified** → must rewrite `acceptance-checklist.md` in the **same turn** (跟随式生成；不写则下次 `/continue` 显示 ⚠ 落后于 requirements.md)
+3. **Task status change** → update `tasks.md` **immediately** (`[~]` / `[x]` / blocked)
+4. **New task / sub-task** → append to `tasks.md` **before** starting it
+5. **requirements.md / bugfix.md modified** → must rewrite `acceptance-checklist.md` in the **same turn** (跟随式生成；不写则下次 `/continue` 显示 `⚠ 落后于 requirements.md`)
 6. **Write-before-verify**: before any `Edit`/`Write` on a spec document, call `spec_session.py verify-lock`. EVICTED → stop work and tell the user.
 7. **Post-`/continue` sync (非常重要)**: after `/continue`, the spec docs are already landed. Any further requirement/design adjustment from the user (including verbal-only "顺便改一下…") MUST be applied to the landed `requirements.md` / `design.md` / `tasks.md` / `acceptance-checklist.md` **in the same turn it is raised**, before any code action. **Never** leave a chat-only change unwritten between turns — the next session will lose it. If multiple docs are affected by one change, update all of them in the same turn.
 
@@ -220,38 +130,35 @@ Classify the request before creating documents:
 - Feature, architecture-first → **Technical Design first**
 - Bug / regression / failing test → **Bugfix**
 
-Use `scripts/spec_choice.py` when the workflow matters and is unclear. In non-interactive shells the script outputs the option block + `AWAITING_USER_CHOICE` sentinel and exits 0 — relay stdout to the user and end the turn. Never silently choose for the user.
+Use `scripts/spec_choice.py` when the workflow matters and is unclear; non-interactive shells get the option block + `AWAITING_USER_CHOICE` sentinel on stdout. **Never silently choose for the user.**
+
+## Help Output (Fast Path)
+
+When the prompt is exactly `/spec -h` or `/spec --help` — **fast path, no thinking, no file scanning beyond the one file below**:
+
+1. `Read` `references/help-output.md` (single file, no other context loading)
+2. Extract the **first** ` ```text ... ``` ` fenced block
+3. Output that block **verbatim** inside one ` ```text ` fence, then **stop**
+
+Forbidden in this path: thinking blocks, summaries, "here is the help", reading other references, loading other files, calling any script. The output is purely a file echo.
+
+The same fast-path applies to `/spec --vault-status`, `/spec --detect-vault`, `/spec --sync-status`: run the single mapped script in `references/commands.md` §Sub-flag Dispatch, output its stdout verbatim, stop. No additional commentary.
 
 ## Output Language
 
 All user-facing output (summaries, questions, confirmations, status, errors) — **Chinese**.
 
-Exceptions (English / original form):
-- Technical terms, command names, file paths, code identifiers
-- Content inside code blocks
-- Skill's own rule files (`SKILL.md`, `references/`)
+Exceptions (English / original form): technical terms, command names, file paths, code identifiers; content inside code blocks; skill's own rule files (`SKILL.md`, `references/`).
 
 If the user's requirement is in English, generated spec documents may use English; other agent output (summaries, confirmations) stays Chinese.
 
-## Helper Scripts
-
-- `scripts/spec_init.py` — create spec directory; **requires `--name <slug>`** (agent generates the semantic slug)
-- `scripts/spec_session.py` — start / continue / status / end / list / list-specs / load / acquire / release / heartbeat / verify-lock / iterate
-- `scripts/spec_vault.py` — detect / set --vault / set --root / get
-- `scripts/spec_lint.py` — validate spec files (now also lock-field + checklist-staleness checks)
-- `scripts/spec_status.py` — task-progress view (thin wrapper over `spec_session.py load --json`)
-- `scripts/spec_choice.py` — selector. TTY → curses ↑/↓ + Enter. Non-TTY (Claude Code Bash, CI) → prints option block + `AWAITING_USER_CHOICE` sentinel on stdout, exits 0; agent relays to user and ends turn.
-
-## Help Output
-
-When `/start -h` / `/start -h` is triggered, output exactly `references/help-output.md` and stop.
-
 ## References
 
-- `references/workflow.md` — full phase protocol, interactive selector commands, `/continue` context loading, EARS examples
-- `references/prompts.md` — **unified prompt templates** (selector usage, clarification format, list view, forbidden phrasings)
-- `references/iteration.md` — iteration phase, sub-loop, document accumulation rules
-- `references/lock-protocol.md` — lock mechanism, takeover, read-only mode, eviction
-- `references/obsidian.md` — vault detection, directory tree, config.json lifecycle
-- `references/templates.md` — document templates and style conventions
-- `references/help-output.md` — verbatim help text
+- `references/commands.md` — **命令完整参考**（入口、子标志 dispatch、可选 spec 名前缀、会话模式、Helper Scripts、Hook 拦截）
+- `references/workflow.md` — 完整 phase 协议、interactive selector 命令、`/continue` 上下文加载、EARS 示例
+- `references/prompts.md` — **统一 prompt 模板**（selector 用法、澄清格式、列表视图、禁用措辞）
+- `references/iteration.md` — iteration 阶段、子循环、文档累积规则
+- `references/lock-protocol.md` — 锁机制、接管、只读模式、驱逐
+- `references/obsidian.md` — vault 检测、目录树、config.json 生命周期
+- `references/templates.md` — 文档模板与样式约定
+- `references/help-output.md` — 帮助文本原文（hook 拦截输出源）

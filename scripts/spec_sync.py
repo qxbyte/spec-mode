@@ -306,7 +306,7 @@ INV1_MESSAGE_TMPL = (
     "且本回合未先修改 design/tasks/bugfix 文档。\n"
     "两条合法路径任选其一:\n"
     "  (A) 先在 design.md 或 tasks.md 中加上该文件的修改说明, 再写代码;\n"
-    "  (B) 如确需自由实现, 运行 /start --freeform 切换至自由阶段。"
+    "  (B) 如确需自由实现, 运行 /spec --freeform 切换至自由阶段。"
 )
 
 INV3_EVICTED_MSG = (

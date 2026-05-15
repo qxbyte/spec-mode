@@ -27,7 +27,7 @@ INV-1 and INV-2 form the **Code-Doc Sync Guard (CDSG)**.
 plugin.json              ← Claude Code / CodeBuddy plugin manifest
 hooks/hooks.json         ← 6 event handlers with shell short-circuit on sentinel
 skills/spec-mode/        ← skill content (SKILL.md + references)
-commands/                ← /start, /continue, /status, /end
+commands/                ← /spec, /continue, /status, /end
 scripts/
   spec_guard.py          ← hook entry; dispatches to handlers; audit log
   spec_state.py          ← read-only state probe + sentinel + Claude-session record
