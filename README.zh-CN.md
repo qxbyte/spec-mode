@@ -15,7 +15,7 @@
 | **INV-1** | 编辑源文件，必须满足以下任一：该文件被列在 `tasks.md` / `## Affected Files`；或同一轮内编辑了 `design.md` / `tasks.md` / `bugfix.md`；或处于 `freeform` 模式 | `PreToolUse` |
 | **INV-2** | 触碰过源代码的 turn，结束前必须至少触碰一份 spec 文档 | `Stop` |
 | **INV-3** | 当前会话已被其他窗口驱逐时，spec 文档写入被拒绝 | `PreToolUse` |
-| **INV-4** | 编辑 `requirements.md` 必须在同一轮内重写 `acceptance-checklist.md` | `Stop` |
+| **INV-4** | 编辑 `requirements.md` / `bugfix.md` 必须在同一轮内更新 `tasks.md`（其 `## 测试要点` 节，由 SHALL 衍生） | `Stop` |
 | **INV-5** | 每个用户 turn 自动注入状态块（`spec / phase / lock / turn`）到模型上下文 | `UserPromptSubmit` |
 | **INV-6** | 实现前阶段（intake / requirements / bugfix / design / tasks）绝对禁止源代码编辑 | `PreToolUse` |
 
@@ -101,7 +101,7 @@ spec 激活后：
 - 每个用户 prompt 都会被附加一段 `spec-mode active` 状态块，标注 spec、phase、锁状态、turn id、freeform 模式
 - 对项目源文件的编辑（不在 `tasks.md` 列表内的）会被拦截，除非同一轮先动了文档（INV-1）
 - 触碰过代码的 turn 在停止前未触碰任何文档时会被拦下，模型必须补一条 `design.md` / `tasks.md` / `implementation-log.md`（INV-2）
-- 改 `requirements.md` 必须在同一轮重写 `acceptance-checklist.md`（INV-4）
+- 改 `requirements.md` / `bugfix.md` 必须在同一轮更新 `tasks.md` 的 `## 测试要点` 节（INV-4）
 - intake / requirements / bugfix / design / tasks 阶段绝对不允许源代码编辑——freeform **不**豁免 INV-6
 
 ## 不对称约束说明

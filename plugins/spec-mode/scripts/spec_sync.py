@@ -1,13 +1,13 @@
 # Code-Doc Sync Guard (CDSG).
 #
 # Implements INV-1 (PreToolUse legality), INV-2 (Stop turn conservation), and
-# INV-4 (acceptance-checklist follow-mode) by maintaining a per-spec ledger at
-# <spec-dir>/.sync-ledger.json that tracks code/doc changes within each turn.
+# INV-4 (Stop requirements↔tasks follow-mode) by maintaining a per-spec ledger
+# at <spec-dir>/.sync-ledger.json that tracks code/doc changes within each turn.
 #
 # Concepts:
 #   - turn:        one user → assistant → stop cycle (refreshed at UserPromptSubmit)
 #   - D (docs):    files under <spec-dir>/, *.md (requirements/design/tasks/
-#                  bugfix/acceptance-checklist/implementation-log)
+#                  bugfix/implementation-log)
 #   - C (code):    files under project_root/ but NOT under <spec-dir>/
 #   - tasks_files: file paths explicitly listed in tasks.md or design.md
 #                  "Affected Files" section, plus glob expansions
@@ -20,6 +20,11 @@
 # Turn conservation (INV-2): a turn that touched any f ∈ C must also touch at
 # least one d ∈ D before Stop. Freeform mode does NOT exempt INV-2 (per design
 # decision 1A). implementation-log.md counts as a doc change (decision 2A).
+#
+# Tasks follow-mode (INV-4): a turn that touched requirements.md or bugfix.md
+# must also touch tasks.md before Stop — the `## 测试要点` section of tasks.md
+# is the tester-facing derivation of the SHALL statements and must stay in
+# lockstep with requirements/bugfix changes.
 
 from __future__ import annotations
 
@@ -41,7 +46,6 @@ SPEC_DOC_FILENAMES = {
     "bugfix.md",
     "design.md",
     "tasks.md",
-    "acceptance-checklist.md",
     "implementation-log.md",
 }
 
@@ -333,11 +337,11 @@ INV2_MESSAGE_TMPL = (
     "  - 在 implementation-log.md 中追加本次变更的纪要。"
 )
 
-INV4_MESSAGE = (
-    "代码-文档同步守卫 (INV-4): requirements.md 已修改但 acceptance-checklist.md 未跟随更新。\n"
-    "必须在本回合内重写 acceptance-checklist.md, 派生自新的 SHALL 语句。"
+INV4_MESSAGE_TMPL = (
+    "代码-文档同步守卫 (INV-4): 本回合修改了 {req} 但未同步 tasks.md 的"
+    " 测试要点。\n需求/bug 行为变化时, 测试人员需要的验证场景也必须同 turn 跟进 ——"
+    " 请在 tasks.md `## 测试要点` 节增删对应行。"
 )
-
 
 def check_pre_edit(
     target: Path,
@@ -407,8 +411,12 @@ def check_stop(ledger: dict) -> list[dict]:
             "msg": INV2_MESSAGE_TMPL.format(n=len(ledger.get("turn_code_changes", []))),
         })
     doc_files = doc_changes_files(ledger)
-    if "requirements.md" in doc_files and "acceptance-checklist.md" not in doc_files:
-        violations.append({"id": "INV-4", "msg": INV4_MESSAGE})
+    req_touched = {"requirements.md", "bugfix.md"} & doc_files
+    if req_touched and "tasks.md" not in doc_files:
+        violations.append({
+            "id": "INV-4",
+            "msg": INV4_MESSAGE_TMPL.format(req=" + ".join(sorted(req_touched))),
+        })
     return violations
 
 

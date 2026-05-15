@@ -17,7 +17,7 @@ Once a spec is active, these invariants are **harness-enforced**:
 | **INV-1** | Editing a source file requires either that file being listed in `tasks.md` / `## Affected Files`, or a same-turn edit to `design.md` / `tasks.md` / `bugfix.md`, or `freeform` mode | `PreToolUse` |
 | **INV-2** | A turn that touched source code must touch at least one spec document before stop | `Stop` |
 | **INV-3** | Spec-doc writes are rejected if the session was evicted by another window | `PreToolUse` |
-| **INV-4** | Edits to `requirements.md` require a same-turn rewrite of `acceptance-checklist.md` | `Stop` |
+| **INV-4** | Edits to `requirements.md` / `bugfix.md` require a same-turn update of `tasks.md` (its `## 测试要点` section, derived from the changed SHALL statements) | `Stop` |
 | **INV-5** | Each user turn injects a status block (`spec / phase / lock / turn`) into the model's context | `UserPromptSubmit` |
 | **INV-6** | Source code edits are forbidden in pre-implementation phases (intake / requirements / bugfix / design / tasks) | `PreToolUse` |
 
@@ -110,8 +110,8 @@ Once a spec is active:
 - Stopping a turn that touched code without touching docs fails until the
   model adds a `design.md` / `tasks.md` / `implementation-log.md` entry
   (INV-2).
-- `requirements.md` edits force `acceptance-checklist.md` updates in the
-  same turn (INV-4).
+- `requirements.md` / `bugfix.md` edits force a same-turn update to
+  `tasks.md` (the `## 测试要点` section, INV-4).
 - Code edits during `intake` / `requirements` / `bugfix` / `design` / `tasks`
   phases are absolutely refused — freeform does NOT exempt INV-6.
 

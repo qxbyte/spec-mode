@@ -44,8 +44,7 @@ spec 文档结构
   <root>/<spec-slug>/requirements.md        需求与验收标准（agent 必须传 --name slug）
   <root>/<spec-slug>/bugfix.md              缺陷规格（替代 requirements.md）
   <root>/<spec-slug>/design.md              技术设计
-  <root>/<spec-slug>/tasks.md               任务列表与执行状态
-  <root>/<spec-slug>/acceptance-checklist.md 验收操作清单（跟随 requirements 自动重写）
+  <root>/<spec-slug>/tasks.md               任务列表 + 测试要点（供测试人员的 SHALL 级验证场景）
   <root>/<spec-slug>/.config.json           specId / lock / iterationRound
   <root>/.active-spec-mode.json             v2 窗口索引（slug-only）
 

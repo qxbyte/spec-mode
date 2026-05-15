@@ -93,15 +93,21 @@ def test_check_stop_inv2_and_inv4():
     spec_sync.append_change(ledger, "doc", "/spec/design.md", "Edit")
     assert spec_sync.check_stop(ledger) == []
 
-    # Requirements w/o checklist → INV-4
+    # Requirements w/o tasks.md → INV-4
     ledger = spec_sync._new_ledger(Path("/tmp/x"))
     spec_sync.append_change(ledger, "doc", "/spec/requirements.md", "Edit")
     violations = spec_sync.check_stop(ledger)
     assert any(v["id"] == "INV-4" for v in violations)
 
-    # Requirements + checklist → ok
-    spec_sync.append_change(ledger, "doc", "/spec/acceptance-checklist.md", "Edit")
+    # Requirements + tasks.md → ok (测试要点 lives in tasks.md)
+    spec_sync.append_change(ledger, "doc", "/spec/tasks.md", "Edit")
     assert spec_sync.check_stop(ledger) == []
+
+    # Bugfix w/o tasks.md → INV-4
+    ledger = spec_sync._new_ledger(Path("/tmp/x"))
+    spec_sync.append_change(ledger, "doc", "/spec/bugfix.md", "Edit")
+    violations = spec_sync.check_stop(ledger)
+    assert any(v["id"] == "INV-4" for v in violations)
 
 
 def test_ledger_turn_lifecycle(tmp_path):

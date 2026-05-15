@@ -37,6 +37,12 @@ Review Status: unreviewed
   - 运行相关测试和检查。
   - 如有失败，停止继续执行并修复或向用户确认。
 
+## 测试要点
+
+供测试人员快速了解需要验证的场景。每行对应 `requirements.md` / `bugfix.md` 中的一条 SHALL，需求或 bug 行为变更时由 agent 在同一轮 turn 内同步更新本节。
+
+- [ ] _agent 待填充_：触发场景 → 预期结果（需求 X.Y）
+
 ## 验收
 
 - [ ] 所有 required 任务完成。

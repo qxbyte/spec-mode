@@ -132,7 +132,6 @@ def main() -> int:
         (first_doc, first_doc),
         ("design.md", "design.md"),
         ("tasks.md", "tasks.md"),
-        ("acceptance-checklist.md", "acceptance-checklist.md"),
     ]:
         template = (TEMPLATE_DIR / template_name).read_text(encoding="utf-8")
         target = spec_dir / output_name

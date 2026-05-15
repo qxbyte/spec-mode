@@ -31,9 +31,9 @@ These rules are checked at **every turn** of every spec-mode session. Never viol
 
 1. ⛔ **Document-first.** Any change to requirements / design / tasks discussed in chat MUST be written to the corresponding spec document **in the same turn**, *before* further discussion or implementation. Verbal-only changes are invisible to the next session and silently drift from the persisted spec.
 
-2. ⛔ **Post-`/continue` sync — 非常重要.** After `/continue` you are resuming an **already-landed** spec. **Every** subsequent adjustment to requirements or design — even a single clarifying sentence from the user — MUST be reflected in `requirements.md` / `bugfix.md` / `design.md` / `tasks.md` and (for requirements changes) `acceptance-checklist.md`, **in the same turn**. Do not wait for "later", do not batch into "next round", do not say "I'll update it after the code". Write **now**. The user said it → write it. The next session can only see what was persisted; chat is ephemeral.
+2. ⛔ **Post-`/continue` sync — 非常重要.** After `/continue` you are resuming an **already-landed** spec. **Every** subsequent adjustment to requirements or design — even a single clarifying sentence from the user — MUST be reflected in `requirements.md` / `bugfix.md` / `design.md` / `tasks.md`, **in the same turn**. Do not wait for "later", do not batch into "next round", do not say "I'll update it after the code". Write **now**. The user said it → write it. The next session can only see what was persisted; chat is ephemeral.
 
-3. ⛔ **acceptance-checklist follow-mode.** `requirements.md` or `bugfix.md` modified → rewrite `acceptance-checklist.md` in the **same turn**, derived from the new SHALL statements. Failure surfaces as `spec_lint.py` WARNING and `⚠ 落后于 requirements.md` on next `/continue`.
+3. ⛔ **tasks.md 测试要点 follow-mode.** `requirements.md` or `bugfix.md` modified → update the `## 测试要点` section of `tasks.md` in the **same turn**, derived from the new SHALL statements. This is INV-4 (enforced at `Stop`): touching requirements/bugfix without touching tasks.md → hook denies the turn.
 
 4. ⛔ **Write-before-verify-lock.** Before any `Edit`/`Write` on a spec document, call `python3 scripts/spec_session.py verify-lock <spec-dir> --session <id>`. Returns `evicted` → stop work immediately and tell the user the spec was taken over by another session.
 
@@ -114,9 +114,9 @@ Spec documents are the sole persistent memory. Any change not written to a docum
 2. **Design decision** → update `design.md` **first**, then implementation
 3. **Task status change** → update `tasks.md` **immediately** (`[~]` / `[x]` / blocked)
 4. **New task / sub-task** → append to `tasks.md` **before** starting it
-5. **requirements.md / bugfix.md modified** → must rewrite `acceptance-checklist.md` in the **same turn** (跟随式生成；不写则下次 `/continue` 显示 `⚠ 落后于 requirements.md`)
+5. **requirements.md / bugfix.md modified** → must update `tasks.md` 的 `## 测试要点` 节 in the **same turn**（INV-4，Stop hook 强制；未同步则整轮被拒绝）
 6. **Write-before-verify**: before any `Edit`/`Write` on a spec document, call `spec_session.py verify-lock`. EVICTED → stop work and tell the user.
-7. **Post-`/continue` sync (非常重要)**: after `/continue`, the spec docs are already landed. Any further requirement/design adjustment from the user (including verbal-only "顺便改一下…") MUST be applied to the landed `requirements.md` / `design.md` / `tasks.md` / `acceptance-checklist.md` **in the same turn it is raised**, before any code action. **Never** leave a chat-only change unwritten between turns — the next session will lose it. If multiple docs are affected by one change, update all of them in the same turn.
+7. **Post-`/continue` sync (非常重要)**: after `/continue`, the spec docs are already landed. Any further requirement/design adjustment from the user (including verbal-only "顺便改一下…") MUST be applied to the landed `requirements.md` / `design.md` / `tasks.md` **in the same turn it is raised**, before any code action. **Never** leave a chat-only change unwritten between turns — the next session will lose it. If multiple docs are affected by one change, update all of them in the same turn.
 
 These writes are non-negotiable. If the user asks to skip writing and proceed, acknowledge — then write first, proceed second. **Writes are forced**: if a write fails (IOError/permission), abort the operation; never continue with in-memory unpersisted state.
 

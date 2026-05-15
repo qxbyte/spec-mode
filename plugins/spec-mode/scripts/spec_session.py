@@ -36,7 +36,6 @@ DOC_FILENAMES = (
     "bugfix.md",
     "design.md",
     "tasks.md",
-    "acceptance-checklist.md",
 )
 DOC_COL_WIDTH = max(len(name) for name in DOC_FILENAMES) + 2
 
@@ -666,7 +665,6 @@ def command_load(args: argparse.Namespace) -> int:
     bug_info = _file_info(spec_dir / "bugfix.md")
     design_info = _file_info(spec_dir / "design.md")
     tasks_info = _file_info(spec_dir / "tasks.md")
-    acceptance_info = _file_info(spec_dir / "acceptance-checklist.md")
 
     req_doc = req_info if req_info["exists"] else bug_info
     req_name = "requirements.md" if req_info["exists"] else "bugfix.md"
@@ -692,12 +690,6 @@ def command_load(args: argparse.Namespace) -> int:
             if status_label == "in_progress":
                 in_progress.append(match.group(2).strip())
 
-    # Detect checklist staleness vs. requirements/bugfix mtime (P0-2 follow-mode).
-    checklist_stale = False
-    if acceptance_info.get("exists") and req_doc.get("exists"):
-        if acceptance_info["modifiedTs"] < req_doc["modifiedTs"] - 1:  # 1s slack
-            checklist_stale = True
-
     lock = config.get("lock") or None
     session_id = normalize_session_id(getattr(args, "session", None))
     result: dict[str, Any] = {
@@ -713,7 +705,6 @@ def command_load(args: argparse.Namespace) -> int:
         "lock": lock,
         "lockHeldBy": (lock or {}).get("sessionId"),
         "lockOwnedByCurrentSession": bool(lock and lock.get("sessionId") == session_id),
-        "checklistStale": checklist_stale,
         "documents": {
             req_name: {
                 "exists": req_doc.get("exists", False),
@@ -731,11 +722,6 @@ def command_load(args: argparse.Namespace) -> int:
                 "modifiedAt": tasks_info.get("modifiedAt"),
                 "counts": counts,
                 "inProgress": in_progress,
-            },
-            "acceptance-checklist.md": {
-                "exists": acceptance_info.get("exists", False),
-                "modifiedAt": acceptance_info.get("modifiedAt"),
-                "stale": checklist_stale,
             },
         },
     }
@@ -780,12 +766,6 @@ def command_load(args: argparse.Namespace) -> int:
         print(f"  {'tasks.md':<{w}} ← {c['completed']}/{c['total']} 已完成, {c['pending']} 待处理{prog}  |  修改: {tasks_d['modifiedAt']}")
     else:
         print(f"  {'tasks.md':<{w}} ← 不存在")
-    acceptance_d = result["documents"]["acceptance-checklist.md"]
-    if acceptance_d["exists"]:
-        stale_tag = " | ⚠ 落后于 requirements.md" if acceptance_d["stale"] else ""
-        print(f"  {'acceptance-checklist.md':<{w}} ← 验收操作清单{stale_tag}  |  修改: {acceptance_d['modifiedAt']}")
-    else:
-        print(f"  {'acceptance-checklist.md':<{w}} ← 不存在")
     return 0
 
 

@@ -114,19 +114,26 @@ def test_stop_passes_with_code_plus_doc(workspace, hook_caller):
     assert rc == 0
 
 
-def test_inv4_requirements_without_checklist(workspace, hook_caller):
+def test_inv4_requirements_without_tasks(workspace, hook_caller):
     _new_turn(workspace, hook_caller)
     hook_caller("post-tool-use", make_edit_payload(workspace["spec_dir"] / "requirements.md", workspace["project_root"]))
     rc, _, err = hook_caller("stop", {"session_id": workspace["session_id"]}, capture_stderr=True)
     assert rc == 2 and "INV-4" in err
 
 
-def test_inv4_requirements_with_checklist(workspace, hook_caller):
+def test_inv4_requirements_with_tasks(workspace, hook_caller):
     _new_turn(workspace, hook_caller)
     hook_caller("post-tool-use", make_edit_payload(workspace["spec_dir"] / "requirements.md", workspace["project_root"]))
-    hook_caller("post-tool-use", make_edit_payload(workspace["spec_dir"] / "acceptance-checklist.md", workspace["project_root"]))
+    hook_caller("post-tool-use", make_edit_payload(workspace["spec_dir"] / "tasks.md", workspace["project_root"]))
     rc, _, _ = hook_caller("stop", {"session_id": workspace["session_id"]}, capture_stderr=True)
     assert rc == 0
+
+
+def test_inv4_bugfix_without_tasks(workspace, hook_caller):
+    _new_turn(workspace, hook_caller)
+    hook_caller("post-tool-use", make_edit_payload(workspace["spec_dir"] / "bugfix.md", workspace["project_root"]))
+    rc, _, err = hook_caller("stop", {"session_id": workspace["session_id"]}, capture_stderr=True)
+    assert rc == 2 and "INV-4" in err
 
 
 # ---- INV-3 (verify-lock) --------------------------------------------------

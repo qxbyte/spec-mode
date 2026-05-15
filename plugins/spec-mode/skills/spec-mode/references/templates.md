@@ -231,6 +231,16 @@ Review Status: unreviewed
     - [说明]
     - _需求：可选_
 
+## 测试要点
+
+供测试人员快速了解需要验证的场景。每行对应 `requirements.md` / `bugfix.md` 中的一条 SHALL；需求或 bug 行为变更时由 agent 在同一轮 turn 内同步更新本节。
+
+- [ ] 输入合法用户名+密码 → 登录成功，跳转首页（需求 1.1）
+- [ ] 密码少于 8 位 → 提示"密码长度不足"（需求 1.2）
+- [ ] 连续 5 次错误密码 → 账号锁定 15 分钟（需求 1.3）
+- [ ] 已登录用户访问 /login → 自动重定向 /home（边界）
+- [ ] 数据库不可用 → 返回 503 并记录日志（非功能）
+
 ## 验收
 
 - [ ] 所有 required 任务完成。
@@ -239,52 +249,13 @@ Review Status: unreviewed
 - [ ] 用户确认验收。
 ```
 
-## `acceptance-checklist.md`
-
-```markdown
-# 验收操作清单：[需求名]（[slug]）
-
-Spec Type: [Feature | Bugfix]
-Workflow: [requirements-first | design-first | bugfix]
-Status: Acceptance Checklist Draft
-Review Status: unreviewed
-
-## 使用说明
-
-面向测试人员或验收人员，逐项执行以下操作，记录实际结果。所有 required 验收项通过后，才能确认本次需求功能点全部实现。
-
-## 前置条件
-
-- [ ] 已切换到包含本次实现的分支或环境。
-- [ ] 已完成 `tasks.md` 中 required 任务。
-- [ ] 已准备必要账号、数据、配置或测试输入。
-- [ ] 已确认需要运行的验证命令或手工测试入口。
-
-## 验收步骤
-
-| 序号 | 功能点 | 操作步骤 | 预期结果 | 实际结果 | 结论 |
-| --- | --- | --- | --- | --- | --- |
-| 1 | 核心能力 | 1. 打开或运行相关功能入口。<br>2. 输入满足需求的正常数据。<br>3. 触发本次新增或修改的能力。 | 系统按 `requirements.md` 或 `bugfix.md` 中的核心验收标准返回正确结果。 | 待记录 | 待验证 |
-| 2 | 异常输入 | 1. 输入缺失、非法或边界数据。<br>2. 触发同一能力。 | 系统给出清晰、可处理的错误反馈，不产生未处理异常。 | 待记录 | 待验证 |
-| 3 | 回归行为 | 1. 执行与本次需求相邻但不应改变的既有流程。<br>2. 对比实现前后的行为。 | 既有正确行为保持不变。 | 待记录 | 待验证 |
-| 4 | 验证命令 | 1. 运行 `tasks.md` 中列出的验证命令。<br>2. 记录命令输出摘要。 | 所有 required 验证命令通过；如跳过，记录原因和风险。 | 待记录 | 待验证 |
-
-## 验收结论
-
-- [ ] 所有 required 功能点已按操作步骤验证。
-- [ ] 所有 required 验证命令已通过，或跳过原因已记录并被接受。
-- [ ] 未完成、失败或跳过的 optional 项已记录。
-- [ ] 用户或验收人员确认通过。
-```
-
 ## Document Style
 
 ### Document Section Structure
 
 - `requirements.md`: 简介, 词汇表, 需求, 用户故事, 验收标准
 - `design.md`: 概述, 架构, 组件与接口, 数据模型, 错误处理, 测试策略, 正确性属性, 风险
-- `tasks.md`: 概述, 任务（nested checkbox items, `_需求：..._` traceability, optional markers, checkpoint tasks）
-- `acceptance-checklist.md`: 使用说明, 前置条件, 验收步骤, 验收结论, 问题记录
+- `tasks.md`: 概述, 任务（nested checkbox items, `_需求：..._` traceability, optional markers, checkpoint tasks）, 测试要点（供测试人员快速了解的 SHALL 级测试场景）
 - `bugfix.md`: Current Behavior, Expected Behavior, Unchanged Behavior
 - Avoid "Assumptions" sections. Prefer "待确认问题" and ask before continuing.
 

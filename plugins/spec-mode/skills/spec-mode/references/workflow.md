@@ -40,16 +40,16 @@ Persistent command rules:
 
 Within an active persistent session, route natural-language follow-ups via document-first discipline (the iron rules live in SKILL.md §Document-first Discipline).
 
-> ⛔ **Post-`/continue` 同 turn 同步（非常重要）**：恢复一个已落地 spec 后，用户在聊天中提出的任何对需求或设计的调整——哪怕只是一句澄清——都必须**在同一轮 turn 内**写回 `requirements.md` / `bugfix.md` / `design.md` / `tasks.md`（需求变更并同 turn 重写 `acceptance-checklist.md`）。不允许累积到"下一轮"，不允许"先写代码后补文档"。
+> ⛔ **Post-`/continue` 同 turn 同步（非常重要）**：恢复一个已落地 spec 后，用户在聊天中提出的任何对需求或设计的调整——哪怕只是一句澄清——都必须**在同一轮 turn 内**写回 `requirements.md` / `bugfix.md` / `design.md` / `tasks.md`（需求/bug 行为变更并同 turn 更新 `tasks.md` 的 `## 测试要点` 节）。不允许累积到"下一轮"，不允许"先写代码后补文档"。
 
 
 | Intent | Action |
 |---|---|
-| Requirement change | Update `requirements.md` / `bugfix.md`, **same turn rewrite `acceptance-checklist.md`**, then check whether `design.md` and `tasks.md` are stale |
+| Requirement change | Update `requirements.md` / `bugfix.md`, **same turn update `tasks.md` 的 `## 测试要点` 节**, then check whether `design.md` and其余 `tasks.md` 任务 are stale |
 | Design change | Update `design.md`, then check whether `tasks.md` is stale |
 | Task change | Update `tasks.md`, preserve `_需求：..._` traceability |
 | Execution request | Verify lock → load only active spec's docs → execute selected or next pending task |
-| Acceptance feedback | Update task/review state in `tasks.md` and `acceptance-checklist.md` |
+| Acceptance feedback | Update task/review state in `tasks.md`（含 `## 测试要点` 节） |
 | User said "/spec-accept" or "验收通过" | Run `spec_session.py iterate <spec-dir>` → phase becomes `iteration` |
 
 ## 1.2 Spec Slug Generation (Agent Responsibility)
@@ -100,8 +100,7 @@ Spec layout:
 └── <spec-slug>/
     ├── requirements.md or bugfix.md
     ├── design.md
-    ├── tasks.md
-    ├── acceptance-checklist.md
+    ├── tasks.md                  ← 含 `## 测试要点` 节（供测试人员）
     └── .config.json              ← per-spec lock + iteration state
 ```
 
@@ -116,51 +115,44 @@ Resolution priority (handled by `spec_init.py:resolve_document_root` / `spec_vau
 ## 4. Requirements-first Flow
 
 1. Generate `requirements.md` with sections: 简介 / 词汇表 / 需求 / 用户故事 / EARS 验收标准 / 边界情况 / 非功能需求 / 待确认问题
-2. **Same turn**: rewrite `acceptance-checklist.md` based on every SHALL in `requirements.md` (see §4.1)
-3. Stop for review; show path, summary, key changes, unresolved questions
-4. After confirm → generate `design.md` → review → confirm
-5. → generate `tasks.md` → review → confirm
-6. → ask whether to execute tasks
-7. Code → validate → accept
+2. Stop for review; show path, summary, key changes, unresolved questions
+3. After confirm → generate `design.md` → review → confirm
+4. → generate `tasks.md`（含 `## 测试要点` 节，**同一文档**内由 SHALL 衍生，见 §4.1）→ review → confirm
+5. → ask whether to execute tasks
+6. Code → validate → accept
 
-## 4.1 acceptance-checklist 跟随式生成（铁律）
+## 4.1 tasks.md 测试要点同步（铁律 / INV-4）
 
-`acceptance-checklist.md` 没有独立确认门。它跟随 `requirements.md` / `bugfix.md` 的变更，由 agent 在**同一轮 turn 内**重写。
+`tasks.md` 的 `## 测试要点` 节没有独立确认门，它跟随 `requirements.md` / `bugfix.md` 的变更，由 agent 在**同一轮 turn 内**更新。`Stop` hook 检测：本轮触碰 requirements/bugfix 但未触碰 tasks.md → 拒绝整轮 (INV-4)。
 
 **填充规则：**
 
 - 读取 requirements.md / bugfix.md 中每一条 EARS `SHALL` 语句
-- 每条 SHALL → checklist 一行：
-  - **功能点** = 该 SHALL 所属的需求名 / 编号
-  - **操作步骤** = 测试人员可执行的具体动作（**禁止**"触发该能力"这种泛化描述）
-  - **预期结果** = 直接引用 SHALL 后的期望行为
-  - **实际结果** = `待记录`
-  - **结论** = `待验证`
-- **禁止保留**模板里"核心能力 / 异常输入 / 回归行为 / _agent 待填充_"等占位行
-- 验证命令行可保留（自动从 tasks.md "验证：xxx" 提取）
+- 每条 SHALL → `## 测试要点` 一行 checkbox：`触发场景 → 预期结果（需求 X.Y）`
+- 操作步骤必须是测试人员可执行的具体动作（**禁止**"触发该能力"这种泛化描述）
+- 预期结果直接引用 SHALL 后的期望行为
+- **禁止保留**模板里"_agent 待填充_"等占位行
+- 写完代码标记 `[x]` 即可，跑通的场景不要删
 
 **例**：需求"新增密码强度校验" → 一行：
-`输入少于 8 位密码点击提交 → 预期提示"密码长度不足"`
-
-**未跟上的检测**：`spec_lint.py` 会在 `acceptance-checklist.mtime < requirements.mtime` 时报 WARNING；`spec_session.py load` 会在加载时显示 `⚠ 落后于 requirements.md`。
+`- [ ] 输入少于 8 位密码点击提交 → 提示"密码长度不足"（需求 1.2）`
 
 ## 5. Technical-design-first Flow
 
 1. `design.md` first; choose level (high / low)
 2. Stop → confirm
-3. Derive `requirements.md` from approved design → **same turn rewrite checklist**
-4. `tasks.md`
+3. Derive `requirements.md` from approved design
+4. `tasks.md`（含 `## 测试要点` 节，由 SHALL 同 turn 衍生）
 5. Display + confirm each
 6. Ask whether to execute
 
 ## 6. Bugfix Flow
 
 1. `bugfix.md` with: Current / Expected / Unchanged / Reproduction / Evidence / Impact
-2. **Same turn rewrite `acceptance-checklist.md`** from SHALL statements
-3. Investigate code before claiming root cause
-4. `design.md` with root cause / fix strategy / regression risks / testing strategy
-5. `tasks.md` with: reproduction test first → minimal fix → unchanged-behavior regression tests → final validation
-6. Display + confirm each
+2. Investigate code before claiming root cause
+3. `design.md` with root cause / fix strategy / regression risks / testing strategy
+4. `tasks.md` with: reproduction test first → minimal fix → unchanged-behavior regression tests → final validation；`## 测试要点` 节同 turn 从 SHALL 衍生
+5. Display + confirm each
 
 ## 7. Task Execution
 
@@ -192,14 +184,14 @@ Final acceptance must include:
 - Tasks completed
 - Validation commands and results
 - Any skipped validation
-- `acceptance-checklist.md` tester-operable steps and recorded results
+- `tasks.md` 的 `## 测试要点` 节作为测试人员的验证清单 + 已记录的执行结果（可直接在原 checkbox 行后追加 `→ 实际：xxx`）
 - Remaining risks or open questions
 - If persistent: footer with `/end`
 
-When all required checklist rows have `结论 = 通过`, agent runs the **验收通过** selector from `references/prompts.md`:
+When all required tasks 已完成且 `## 测试要点` 所有 checkbox 均 `[x]`, agent runs the **验收通过** selector from `references/prompts.md`:
 
 - `验收通过` → run `python3 scripts/spec_session.py iterate <spec-dir>` → `iterationRound` 自增、phase 变为 `iteration`
-- `继续修改` → 留在 `acceptance` 阶段调整 checklist 或回滚到 `implementation`
+- `继续修改` → 留在 `acceptance` 阶段补测试点或回滚到 `implementation`
 
 ## 9. `/continue` — Context Loading + Multi-Window
 
@@ -250,7 +242,6 @@ Steps:
   requirements.md           ← N 条验收标准  |  修改: <time>
   design.md                 ←               |  修改: <time>
   tasks.md                  ← N/M 已完成, P 待处理  |  修改: <time>
-  acceptance-checklist.md   ← 验收操作清单  |  修改: <time>
 ```
 
 6. Output footer (if persistent / read-only)
@@ -293,11 +284,10 @@ The user's next reply drives the next action:
 Full phase sequence:
 
 1. Generate or update `requirements.md` (feature) or `bugfix.md` (bugfix). Show summary + options. End turn. Wait for confirm.
-2. **Same turn as #1**: rewrite `acceptance-checklist.md` from SHALL statements (跟随式，无单独确认门).
-3. After confirm: generate or update `design.md`. Show summary + options. End turn. Wait for confirm.
-4. After confirm: generate or update `tasks.md`. Show summary + options. End turn. Wait for confirm.
-5. After confirm: show task execution options (required only / required + optional / hold). End turn. Wait for choice.
-6. After explicit execution choice: begin coding tasks, validate, accept.
+2. After confirm: generate or update `design.md`. Show summary + options. End turn. Wait for confirm.
+3. After confirm: generate or update `tasks.md`，**同一文档**内同 turn 把 `## 测试要点` 节按 SHALL 填好（跟随式，无单独确认门；INV-4 hook 强制）. Show summary + options. End turn. Wait for confirm.
+4. After confirm: show task execution options (required only / required + optional / hold). End turn. Wait for choice.
+5. After explicit execution choice: begin coding tasks, validate, accept.
 
 If user asks for one-pass generation, still show paths, summaries, key changes per document, and mark `Review Status: unreviewed`.
 

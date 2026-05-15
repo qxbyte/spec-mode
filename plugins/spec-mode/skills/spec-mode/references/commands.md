@@ -57,7 +57,7 @@ Sub-flag dispatch 由模型按本表执行，不进入 intake 流程。`-h` / `-
 
 ## Sessions: One-shot vs Persistent
 
-每次 `/spec` 都生成永久文档（`requirements.md`, `design.md`, `tasks.md`, `acceptance-checklist.md`, `.config.json`），随时可通过 `/continue` 重开。
+每次 `/spec` 都生成永久文档（`requirements.md` 或 `bugfix.md`, `design.md`, `tasks.md`（含 `## 测试要点` 节）, `.config.json`），随时可通过 `/continue` 重开。
 
 | | one-shot `/spec` | `/spec --persist` |
 |--|--|--|
@@ -88,8 +88,8 @@ Sub-flag dispatch 由模型按本表执行，不进入 intake 流程。`-h` / `-
 - `scripts/spec_init.py` — 创建 spec 目录；**必须传 `--name <slug>`**（agent 派生 slug）
 - `scripts/spec_session.py` — `start / continue / status / end / list / list-specs / load / acquire / release / heartbeat / verify-lock / iterate`
 - `scripts/spec_vault.py` — `detect / set --vault / set --root / get`
-- `scripts/spec_lint.py` — 校验 spec 文件（含锁字段 + checklist 落后检查）
+- `scripts/spec_lint.py` — 校验 spec 文件（含锁字段）
 - `scripts/spec_status.py` — 任务进度视图（`spec_session.py load --json` 的薄包装）
 - `scripts/spec_choice.py` — 选择器；TTY → curses ↑/↓ + Enter；非 TTY（Claude Code Bash / CI）→ 打印 option 块 + `AWAITING_USER_CHOICE` 哨兵 + exit 0，agent 把 stdout 原样转发给用户后结束 turn
 - `scripts/spec_sync.py` — Code-Doc Sync ledger（`status / freeform / strict` 等）
-- `scripts/spec_guard.py` — Hook 入口（INV-1/2/4 强制 + SessionStart/End 跟踪）
+- `scripts/spec_guard.py` — Hook 入口（INV-1/2/3/4/6 强制 + SessionStart/End 跟踪）

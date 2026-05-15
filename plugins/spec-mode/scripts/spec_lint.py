@@ -14,18 +14,6 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _placeholder_checklist_rows(text: str) -> list[str]:
-    """Return template placeholder rows still present in acceptance-checklist."""
-    findings: list[str] = []
-    placeholder_terms = ("核心能力", "异常输入", "回归行为", "_agent 待填充_")
-    for line in text.splitlines():
-        if not line.strip().startswith("|"):
-            continue
-        if any(term in line for term in placeholder_terms):
-            findings.append(line.strip())
-    return findings
-
-
 def lint(spec_dir: Path) -> list[str]:
     errors: list[str] = []
     warnings: list[str] = []
@@ -35,7 +23,6 @@ def lint(spec_dir: Path) -> list[str]:
     bug = spec_dir / "bugfix.md"
     design = spec_dir / "design.md"
     tasks = spec_dir / "tasks.md"
-    acceptance = spec_dir / "acceptance-checklist.md"
     config = spec_dir / ".config.json"
 
     if req.exists() and bug.exists():
@@ -46,8 +33,6 @@ def lint(spec_dir: Path) -> list[str]:
         errors.append("Missing design.md.")
     if not tasks.exists():
         errors.append("Missing tasks.md.")
-    if not acceptance.exists():
-        errors.append("Missing acceptance-checklist.md.")
     if not config.exists():
         warnings.append("Missing .config.json.")
     else:
@@ -140,31 +125,6 @@ def lint(spec_dir: Path) -> list[str]:
             warnings.append("tasks.md does not contain validation notes.")
         if "_需求：" not in section and "Requirements:" not in section and "Behavior:" not in section:
             warnings.append("tasks.md does not contain requirement traceability.")
-
-    if acceptance.exists():
-        text = read(acceptance)
-        for heading in ["## 前置条件", "## 验收步骤", "## 验收结论"]:
-            if heading not in text:
-                warnings.append(f"acceptance-checklist.md is missing {heading}.")
-        for column in ["操作步骤", "预期结果", "实际结果", "结论"]:
-            if column not in text:
-                warnings.append(f"acceptance-checklist.md is missing checklist column: {column}.")
-        placeholder_rows = _placeholder_checklist_rows(text)
-        if placeholder_rows:
-            warnings.append(
-                f"acceptance-checklist.md still contains {len(placeholder_rows)} placeholder row(s); "
-                "agent must replace them with rows derived from requirements.md SHALL statements."
-            )
-        # Mtime follow-mode check (P0-2): checklist should be no older than the
-        # source requirement document.
-        if first_doc and first_doc.exists():
-            checklist_ts = acceptance.stat().st_mtime
-            req_ts = first_doc.stat().st_mtime
-            if checklist_ts < req_ts - 1:
-                warnings.append(
-                    f"acceptance-checklist.md is older than {first_doc.name}. "
-                    "Per follow-mode rule, regenerate it in the same turn as the requirements update."
-                )
 
     return [f"ERROR: {item}" for item in errors] + [f"WARNING: {item}" for item in warnings]
 

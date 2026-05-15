@@ -111,8 +111,6 @@ def main() -> int:
         print(f"Lock: {owner}")
     else:
         print("Lock: 空闲")
-    if result["checklistStale"]:
-        print("⚠ acceptance-checklist.md 落后于 requirements.md，请在同 turn 重写")
     c = result["counts"]
     print(
         "Tasks: "

@@ -5,7 +5,7 @@
 #   - UserPromptSubmit: inject status block; start new turn in ledger; refresh tasks_files.
 #   - PreToolUse: INV-1 — block code edits not covered by tasks/doc-change/freeform.
 #   - PostToolUse: append the just-completed change to the ledger.
-#   - Stop: INV-2 (turn conservation) + INV-4 (acceptance-checklist follow-mode).
+#   - Stop: INV-2 (turn conservation).
 #   - SessionStart / SessionEnd: track Claude session, sync sentinel.
 #
 # Invariants:

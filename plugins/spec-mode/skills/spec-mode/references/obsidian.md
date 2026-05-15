@@ -9,10 +9,9 @@
         └── specs/
             ├── .active-spec-mode.json
             └── <requirement-name>/
-                ├── requirements.md
-                ├── bugfix.md
+                ├── requirements.md       (or bugfix.md)
                 ├── design.md
-                ├── tasks.md
+                ├── tasks.md              ← 含 `## 测试要点` 节
                 └── .config.json
 ```
 
