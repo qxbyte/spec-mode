@@ -37,7 +37,6 @@ plugins/spec-mode/
     spec_sync.py                  ← INV-1/2/3/4/6 logic; ledger; phase gate; glob matcher
     spec_session.py               ← lock + phase + active-pointer model
     spec_init.py / spec_lint.py / spec_status.py / spec_choice.py / spec_vault.py
-  adapters/codebuddy/             ← verified contract + re-verification procedure
   tests/                          ← 19 pytest cases (unit + integration)
 ```
 
@@ -136,9 +135,9 @@ exits before any Python startup → effectively free.
 ## CodeBuddy support
 
 Verified on CodeBuddy 2.97.1: same `hooks/hooks.json` and
-`scripts/spec_guard.py` run unmodified. The full verified contract
-(env vars, payload shapes, event coverage) is in
-[`plugins/spec-mode/adapters/codebuddy/README.md`](./plugins/spec-mode/adapters/codebuddy/README.md).
+`scripts/spec_guard.py` run unmodified. CodeBuddy ships a Claude Code
+2.1.142 agent under the hood and injects both `CLAUDE_PLUGIN_ROOT` and
+`CODEBUDDY_PLUGIN_ROOT`, so the integration is byte-for-byte compatible.
 
 ## Contributing
 
