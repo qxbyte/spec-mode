@@ -133,45 +133,17 @@ or that don't reference any actual code file (the *cosmetic-doc* concern).
 When no spec is active, the shell `[ ! -e ~/.spec-mode/.any-active ]` check
 exits before any Python startup → effectively free.
 
-## Bypass switch
-
-```sh
-export SPEC_MODE_GUARD=off
-```
-
-Every hook returns 0 immediately, without audit. Debugging only.
-
 ## CodeBuddy support
 
-Verified on CodeBuddy 2.97.1: plugin / hook contract is byte-for-byte
-identical to Claude Code, so the same `hooks/hooks.json` and
-`scripts/spec_guard.py` run unmodified. CodeBuddy injects both
-`CLAUDE_PLUGIN_ROOT` and `CODEBUDDY_PLUGIN_ROOT` (plus `CLAUDECODE=1`
-and `AI_AGENT=claude-code_2-1-142_agent`), confirming it ships a
-Claude Code agent under the hood. See `adapters/codebuddy/README.md` for
-the full verified contract and `adapters/codebuddy/VERIFY.md` for the
-re-verification procedure if a future release breaks something.
+Verified on CodeBuddy 2.97.1: same `hooks/hooks.json` and
+`scripts/spec_guard.py` run unmodified. The full verified contract
+(env vars, payload shapes, event coverage) is in
+[`plugins/spec-mode/adapters/codebuddy/README.md`](./plugins/spec-mode/adapters/codebuddy/README.md).
 
-## Tests
+## Contributing
 
-```sh
-python3 -m pip install --user pytest
-python3 -m pytest plugins/spec-mode/tests/ -v
-```
-
-19 cases covering INV-1..INV-6 paths, freeform behavior, lock states,
-phase gate matrix, and glob/literal tasks_files matching.
-
-## Status
-
-- Phase 1: hook wiring ✓
-- Phase 2: state layer + status injection + short-circuit ✓
-- Phase 3: Code-Doc Sync Guard (INV-1/2/4) ✓
-- Phase 4: verify-lock + phase gate (INV-3/6) ✓
-- Phase 5: CodeBuddy static adapter (env var fallback + open items doc) ✓
-- Phase 6: pytest suite + docs + old-skill stub ✓
-- Phase 7: live CodeBuddy verification (2.97.1, all hooks confirmed) ✓
-- Phase 8: self-marketplace + GitHub install via `plugin marketplace add` ✓
+See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the runtime stdlib-only
+rule, hook safety contract, and test conventions.
 
 ## License
 

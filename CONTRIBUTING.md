@@ -2,8 +2,8 @@
 
 ## Runtime is stdlib-only
 
-The runtime code under `scripts/` MUST use only the Python standard library.
-This is a hard rule, declared in `plugin.json`:
+The runtime code under `plugins/spec-mode/scripts/` MUST use only the
+Python standard library. This is a hard rule, declared in `plugin.json`:
 
 ```json
 "requires": { "python": ">=3.9", "stdlib_only": true }
@@ -18,17 +18,19 @@ Tests under `tests/` MAY use `pytest` (it's a dev dependency, not runtime).
 
 ## Test conventions
 
-Run the suite:
+Run the suite from the repo root:
 
 ```sh
-python3 -m pytest tests/ -v
+python3 -m pytest plugins/spec-mode/tests/ -v
 ```
 
 When adding behavior to `spec_sync.py` or `spec_guard.py`, add:
 
-1. A unit test under `tests/test_spec_sync.py` for the pure function.
-2. An integration test under `tests/test_spec_guard.py` exercising the
-   handler path with a fabricated stdin payload through `hook_caller`.
+1. A unit test under `plugins/spec-mode/tests/test_spec_sync.py` for the
+   pure function.
+2. An integration test under `plugins/spec-mode/tests/test_spec_guard.py`
+   exercising the handler path with a fabricated stdin payload through
+   `hook_caller`.
 
 Use the `workspace` fixture for handler tests — it creates a tmp spec_dir
 + project_root and monkey-patches `spec_state.find_active_spec` so you don't
