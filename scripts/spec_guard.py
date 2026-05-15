@@ -2,14 +2,14 @@
 # Hook entry for spec-mode plugin. Reads Claude Code hook JSON on stdin,
 # dispatches to a handler, writes an audit log line, exits.
 #
-# Phase 1: every handler short-circuits to ok(). Real logic lands in later phases:
-#   - Phase 2: spec_state integration (SessionStart, UserPromptSubmit status inject, SessionEnd)
-#   - Phase 3: Code-Doc Sync Guard (PreToolUse INV-1/INV-6, PostToolUse ledger, Stop INV-2/INV-4)
+# Phase 2: integrate spec_state — SessionStart/End record Claude sessions,
+# UserPromptSubmit injects a status block when a spec is active, all other
+# handlers fast-exit when no active spec.
 #
-# Invariants for THIS file, even in Phase 1:
-#   - Never raise out of main(). Any internal error is logged and returns 0 (don't wedge user).
+# Hook invariants:
+#   - Never raise out of main(). Internal errors log to audit and return 0.
 #   - Honor SPEC_MODE_GUARD=off as a global bypass.
-#   - Audit-log every invocation so we can verify hook wiring without changing model behavior.
+#   - Audit only meaningful events (skip when no active spec on idle session).
 
 import json
 import os
@@ -17,6 +17,11 @@ import sys
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
+
+# Make sibling modules importable when invoked from hooks.json.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import spec_state  # noqa: E402
+
 
 AUDIT_DIR = Path(
     os.environ.get("SPEC_MODE_AUDIT_DIR")
@@ -40,7 +45,6 @@ def _audit(event: str, payload: dict, decision: str, msg: str = "") -> None:
         with log_file.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
     except Exception:
-        # Audit failure must never break the hook chain.
         pass
 
 
@@ -49,37 +53,79 @@ def ok() -> int:
 
 
 def deny(msg: str) -> int:
-    # exit 2 + stderr content is how Claude Code surfaces hook denial back to the model.
     sys.stderr.write(msg)
     return 2
 
 
+def _prefer_session_id() -> str:
+    return os.environ.get("TERM_SESSION_ID") or ""
+
+
 def handle_session_start(payload: dict) -> int:
-    _audit("SessionStart", payload, "ok")
+    sid = payload.get("session_id") or ""
+    try:
+        spec_state.write_claude_session(sid, payload)
+        is_active = spec_state.sync_any_active_sentinel()
+    except Exception as e:
+        _audit("SessionStart", payload, "state-error", str(e))
+        return ok()
+    _audit("SessionStart", payload, "ok", f"any_active={is_active}")
     return ok()
 
 
 def handle_user_prompt_submit(payload: dict) -> int:
-    _audit("UserPromptSubmit", payload, "ok")
+    info = spec_state.find_active_spec(prefer_session_id=_prefer_session_id())
+    if info is None:
+        spec_state.sync_any_active_sentinel()
+        return ok()
+
+    block = spec_state.render_status_block(info)
+    output = {
+        "hookSpecificOutput": {
+            "hookEventName": "UserPromptSubmit",
+            "additionalContext": block,
+        }
+    }
+    sys.stdout.write(json.dumps(output, ensure_ascii=False))
+    _audit("UserPromptSubmit", payload, "injected", info.get("spec_slug") or "")
     return ok()
 
 
 def handle_pre_tool_use(payload: dict) -> int:
-    _audit("PreToolUse", payload, "ok")
-    return ok()
+    info = spec_state.find_active_spec(prefer_session_id=_prefer_session_id())
+    if info is None:
+        spec_state.sync_any_active_sentinel()
+        return ok()
+    _audit("PreToolUse", payload, "ok-active-spec", info.get("spec_slug") or "")
+    return ok()  # Phase 3 will add INV-1 / INV-6 here.
 
 
 def handle_post_tool_use(payload: dict) -> int:
-    _audit("PostToolUse", payload, "ok")
-    return ok()
+    info = spec_state.find_active_spec(prefer_session_id=_prefer_session_id())
+    if info is None:
+        spec_state.sync_any_active_sentinel()
+        return ok()
+    _audit("PostToolUse", payload, "ok-active-spec", info.get("spec_slug") or "")
+    return ok()  # Phase 3 will update sync-ledger here.
 
 
 def handle_stop(payload: dict) -> int:
-    _audit("Stop", payload, "ok")
-    return ok()
+    info = spec_state.find_active_spec(prefer_session_id=_prefer_session_id())
+    if info is None:
+        spec_state.sync_any_active_sentinel()
+        return ok()
+    _audit("Stop", payload, "ok-active-spec", info.get("spec_slug") or "")
+    return ok()  # Phase 3 will add INV-2 / INV-4 here.
 
 
 def handle_session_end(payload: dict) -> int:
+    sid = payload.get("session_id") or ""
+    try:
+        spec_state.clear_claude_session(sid)
+        spec_state.sync_any_active_sentinel()
+    except Exception as e:
+        _audit("SessionEnd", payload, "state-error", str(e))
+        return ok()
     _audit("SessionEnd", payload, "ok")
     return ok()
 
