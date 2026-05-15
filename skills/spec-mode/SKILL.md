@@ -74,6 +74,9 @@ If the text after `/spec` is an existing file path, read it as the requirement s
 | `--vault-status` | Run `python3 scripts/spec_vault.py get`, show output, stop. |
 | `-h` / `--help` | Output `references/help-output.md` verbatim, stop. |
 | `--persist <req>` | Initialize persistent session via `spec_init.py --persistent` and start workflow. |
+| `--freeform` | Run `python3 scripts/spec_sync.py freeform on` (relax INV-1 for current spec; INV-2 still enforced), show output, stop. |
+| `--strict` | Run `python3 scripts/spec_sync.py freeform off` (restore INV-1), show output, stop. |
+| `--sync-status` | Run `python3 scripts/spec_sync.py status` (show ledger / pending sync / last violation), show output, stop. |
 
 For any of the dispatch flags above (the first five rows), **do not** run intake, do not create a spec folder, do not enter Plan-mode. Just execute the indicated script and stop.
 
