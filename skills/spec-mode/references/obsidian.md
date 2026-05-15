@@ -23,17 +23,17 @@
 `~/.config/spec-mode/config.json` 在两种情况下写入：
 
 - **首次 Obsidian 检测**：`resolve_spec_root()` 检测到 vault 后计算路径并自动保存。后续调用直接读取此文件，不再重新检测 Obsidian。
-- **显式设置**：用户运行 `/spec --set-vault` 或 `/spec --set-root`（任何时候可执行，立即覆盖旧值）。
+- **显式设置**：用户运行 `/start --set-vault` 或 `/start --set-root`（任何时候可执行，立即覆盖旧值）。
 
 此文件不会自动创建于其他情况。若 Obsidian 未安装且未显式设置，`resolve_spec_root()` 返回 `None`，由 `spec_init.py` 抛出引导提示并终止（不再回退到项目目录或默认路径）。
 
 ## 跨会话路径读取
 
-对于持久 session 和跨会话恢复（`/spec-continue`），文档根目录从各 spec 自身的 `.config.json`（`documentRoot` 字段）直接读取，**不依赖** vault 检测或 `~/.config/spec-mode/config.json`。vault 路径解析仅在创建新 spec 时需要。
+对于持久 session 和跨会话恢复（`/continue`），文档根目录从各 spec 自身的 `.config.json`（`documentRoot` 字段）直接读取，**不依赖** vault 检测或 `~/.config/spec-mode/config.json`。vault 路径解析仅在创建新 spec 时需要。
 
 ## 旧位置警告
 
-`/spec --set-vault` / `--set-root` 执行后，`spec_vault.py` 会扫描历史 fallback 位置（`<cwd>/specs`、`~/new project/specs`）。若发现遗留 spec 目录，输出 `⚠ 旧位置仍有 N 个 spec（不会自动迁移）` 警告，并列出最多 10 个 spec 路径。如需迁移，用户手动 `mv` 并更新各 spec 的 `.config.json.documentRoot` 字段。
+`/start --set-vault` / `--set-root` 执行后，`spec_vault.py` 会扫描历史 fallback 位置（`<cwd>/specs`、`~/new project/specs`）。若发现遗留 spec 目录，输出 `⚠ 旧位置仍有 N 个 spec（不会自动迁移）` 警告，并列出最多 10 个 spec 路径。如需迁移，用户手动 `mv` 并更新各 spec 的 `.config.json.documentRoot` 字段。
 
 ## 平台 Obsidian 配置文件路径
 

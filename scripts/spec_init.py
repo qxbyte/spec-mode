@@ -45,8 +45,8 @@ def resolve_document_root(root: str | None) -> tuple[Path, str]:
         "message": (
             "未检测到 Obsidian vault，且未配置 spec 根目录。请选择以下方式之一：\n"
             "  1. 安装 Obsidian 后重试（推荐）\n"
-            "  2. /spec --set-vault <vault路径>\n"
-            "  3. /spec --set-root <自定义目录>"
+            "  2. /start --set-vault <vault路径>\n"
+            "  3. /start --set-root <自定义目录>"
         ),
     }, ensure_ascii=False))
 
@@ -82,7 +82,7 @@ def main() -> int:
                         help="Semantic slug (lowercase, hyphen-separated). The agent must compute and pass this; "
                              "the script does not infer slugs from Chinese.")
     parser.add_argument("--requirement-name", help="Display name for the spec. Defaults to --name.")
-    parser.add_argument("--source-text", help="Requirement text, usually the text after /spec.")
+    parser.add_argument("--source-text", help="Requirement text, usually the text after /start.")
     parser.add_argument("--source-file", help="Path to a requirement source document.")
     parser.add_argument("--workflow", choices=["requirements-first", "design-first", "bugfix"], default="requirements-first")
     parser.add_argument("--spec-type", choices=["feature", "bugfix"], default="feature")

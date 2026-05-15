@@ -6,17 +6,16 @@ Operational reference for the rules defined in `SKILL.md`. Activation conditions
 
 Activation rules are defined in `SKILL.md §Activation Guard` and apply here without exception. Do not re-state or paraphrase them. If the current request does not satisfy SKILL.md activation conditions, do not create a spec directory and do not run the phase-gated workflow.
 
-## 1. `/spec` Intake
+## 1. `/start` Intake
 
 Parse user input as:
 
 ```text
-/spec <requirement-or-path> [extra instructions]
-/spec-mode <requirement-or-path> [extra instructions]
-/spec --persist <requirement-or-path>
-/spec-continue [spec-slug]
-/spec-status
-/spec-end
+/start <requirement-or-path> [extra instructions]
+/start --persist <requirement-or-path>
+/continue [spec-slug]
+/status
+/end
 ```
 
 Intake rules:
@@ -31,17 +30,17 @@ Intake rules:
 
 Persistent command rules:
 
-- `/spec <requirement>` — one-shot. Runs the workflow without updating `.active-spec-mode.json`.
-- `/spec --persist <requirement>` — persistent. Initializes spec and starts an active session.
-- `/spec-continue [slug]` — resume; multi-window aware (see §9).
-- `/spec-status` — prints current session, spec path, phase, task counts, lock state.
-- `/spec-end` — ends current session, releases the spec lock, **does not** delete docs.
+- `/start <requirement>` — one-shot. Runs the workflow without updating `.active-spec-mode.json`.
+- `/start --persist <requirement>` — persistent. Initializes spec and starts an active session.
+- `/continue [slug]` — resume; multi-window aware (see §9).
+- `/status` — prints current session, spec path, phase, task counts, lock state.
+- `/end` — ends current session, releases the spec lock, **does not** delete docs.
 
 ## 1.1 Natural-language Follow-up Routing
 
 Within an active persistent session, route natural-language follow-ups via document-first discipline (the iron rules live in SKILL.md §Document-first Discipline).
 
-> ⛔ **Post-`/spec-continue` 同 turn 同步（非常重要）**：恢复一个已落地 spec 后，用户在聊天中提出的任何对需求或设计的调整——哪怕只是一句澄清——都必须**在同一轮 turn 内**写回 `requirements.md` / `bugfix.md` / `design.md` / `tasks.md`（需求变更并同 turn 重写 `acceptance-checklist.md`）。不允许累积到"下一轮"，不允许"先写代码后补文档"。
+> ⛔ **Post-`/continue` 同 turn 同步（非常重要）**：恢复一个已落地 spec 后，用户在聊天中提出的任何对需求或设计的调整——哪怕只是一句澄清——都必须**在同一轮 turn 内**写回 `requirements.md` / `bugfix.md` / `design.md` / `tasks.md`（需求变更并同 turn 重写 `acceptance-checklist.md`）。不允许累积到"下一轮"，不允许"先写代码后补文档"。
 
 
 | Intent | Action |
@@ -195,27 +194,27 @@ Final acceptance must include:
 - Any skipped validation
 - `acceptance-checklist.md` tester-operable steps and recorded results
 - Remaining risks or open questions
-- If persistent: footer with `/spec-end`
+- If persistent: footer with `/end`
 
 When all required checklist rows have `结论 = 通过`, agent runs the **验收通过** selector from `references/prompts.md`:
 
 - `验收通过` → run `python3 scripts/spec_session.py iterate <spec-dir>` → `iterationRound` 自增、phase 变为 `iteration`
 - `继续修改` → 留在 `acceptance` 阶段调整 checklist 或回滚到 `implementation`
 
-## 9. `/spec-continue` — Context Loading + Multi-Window
+## 9. `/continue` — Context Loading + Multi-Window
 
-`/spec-continue` is a load-and-report command. It restores context and stops; it does not start implementation, run validation, or evaluate acceptance.
+`/continue` is a load-and-report command. It restores context and stops; it does not start implementation, run validation, or evaluate acceptance.
 
 ### 9.1 No-arg form
 
 ```text
-/spec-continue
+/continue
 ```
 
 Steps:
 
 1. Resolve configured root: `python3 scripts/spec_vault.py get --json --configured-only`
-   - If no configured root → ask user to run `/spec --set-vault` or `/spec --set-root` and stop
+   - If no configured root → ask user to run `/start --set-vault` or `/start --set-root` and stop
 2. List specs: `python3 scripts/spec_session.py list-specs --root <root> --json`
 3. List sessions: `python3 scripts/spec_session.py list --root <root> --json`
 4. Present using **Template C — List + Numeric Selection** in `references/prompts.md` (三段固定：当前会话 / 其他窗口 / 可继续的全部 specs；锁状态用固定词；结束语固定)
@@ -224,7 +223,7 @@ Steps:
 ### 9.2 With slug
 
 ```text
-/spec-continue <slug>
+/continue <slug>
 ```
 
 Steps:
@@ -232,7 +231,7 @@ Steps:
 1. Resolve `spec_dir = <root>/<slug>`
 2. `python3 scripts/spec_session.py acquire <spec-dir> --session <id>`
    - **Exit 0** → owned, proceed to step 3
-   - **Exit 4 (LockHeld)** → 输出锁状态摘要，运行 **`/spec-continue` 接管** 选择器（见 `references/prompts.md`）
+   - **Exit 4 (LockHeld)** → 输出锁状态摘要，运行 **`/continue` 接管** 选择器（见 `references/prompts.md`）
      - `强制接管` → `acquire --force`, warn that previous session was evicted
      - `只读查看` → skip acquire, set read-only flag; do **not** update active-pointer's specSlug binding
      - `取消` → exit
@@ -257,7 +256,7 @@ Steps:
 6. Output footer (if persistent / read-only)
 7. **Stop and wait for user's next input.** Do not start tasks.
 
-> ⛔ 从这一刻起，本会话进入"已落地 spec 的持续沟通"模式。后续任何对需求或设计的调整 **必须同 turn 写回对应文档**——见 §1.1 顶部铁律。聊天里说过但没写入文件的内容，下次 `/spec-continue` 时全部丢失。
+> ⛔ 从这一刻起，本会话进入"已落地 spec 的持续沟通"模式。后续任何对需求或设计的调整 **必须同 turn 写回对应文档**——见 §1.1 顶部铁律。聊天里说过但没写入文件的内容，下次 `/continue` 时全部丢失。
 
 ## 10. Boundary Anti-contamination Rules
 
@@ -330,7 +329,7 @@ All selector command blocks live in `references/prompts.md` — copy-paste them 
 - Workflow 类型选择
 - 文档确认（每份 spec 文档生成后）
 - 任务执行（tasks.md 确认后）
-- `/spec-continue` 接管（spec 已被锁定时）
+- `/continue` 接管（spec 已被锁定时）
 - 澄清完成（Plan-mode 结束）
 - 验收通过（acceptance 完成时）
 

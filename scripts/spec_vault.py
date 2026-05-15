@@ -169,8 +169,8 @@ def command_detect(args: argparse.Namespace) -> int:
         print()
         print("请选择以下方式之一：")
         print("  1. 安装 Obsidian 后重试（推荐）")
-        print("  2. /spec --set-vault <vault路径>")
-        print("  3. /spec --set-root <自定义目录>")
+        print("  2. /start --set-vault <vault路径>")
+        print("  3. /start --set-root <自定义目录>")
     else:
         print(f"检测到 {len(vaults)} 个 vault：")
         for v in vaults:
@@ -208,7 +208,7 @@ def command_set(args: argparse.Namespace) -> int:
 
     write_config(cfg)
     print(f"\n配置已保存至: {CONFIG_FILE}")
-    print("  (此后每次 /spec 自动使用此路径；任何时候可再次运行 set 修改)")
+    print("  (此后每次 /start 自动使用此路径；任何时候可再次运行 set 修改)")
 
     new_root = Path(cfg["obsidianRoot"]).expanduser().resolve()
     others = list_other_root_specs(new_root)
@@ -261,8 +261,8 @@ def command_get(args: argparse.Namespace) -> int:
         print()
         print("请选择以下方式之一：")
         print("  1. 安装 Obsidian 后重试（推荐）")
-        print("  2. /spec --set-vault <vault路径>")
-        print("  3. /spec --set-root <自定义目录>")
+        print("  2. /start --set-vault <vault路径>")
+        print("  3. /start --set-root <自定义目录>")
     print(f"配置文件: {CONFIG_FILE} ({'存在' if CONFIG_FILE.exists() else '不存在'})")
     return 0
 

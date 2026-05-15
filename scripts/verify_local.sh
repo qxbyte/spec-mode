@@ -1,5 +1,5 @@
 #!/bin/sh
-# Local end-to-end verification helper for spec-mode-plugin.
+# Local end-to-end verification helper for spec-mode.
 #
 # Usage:
 #   sh scripts/verify_local.sh setup     # set up demo state for testing
@@ -53,7 +53,7 @@ case "${1:-help}" in
     ;;
   *)
     cat <<USAGE
-spec-mode-plugin local verification helper.
+spec-mode local verification helper.
 
 Commands:
   setup      Create a demo spec under document_root and activate it.

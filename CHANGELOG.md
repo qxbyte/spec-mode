@@ -4,7 +4,7 @@
 
 ### Phase 1 — bootstrap
 
-- Repo skeleton extracted from `~/Git/skills/spec-mode/`.
+- Initial plugin skeleton.
 - `plugin.json` for Claude Code / CodeBuddy.
 - `hooks/hooks.json` wiring SessionStart / UserPromptSubmit / PreToolUse /
   PostToolUse / Stop / SessionEnd → `scripts/spec_guard.py`.
@@ -73,5 +73,3 @@ Hard-decision compliance (design doc §13):
 - `README.md` rewritten as full reference (rules, architecture, install,
   usage, performance, bypass, CodeBuddy note, tests).
 - `CONTRIBUTING.md`: stdlib-only runtime rule, test conventions.
-- `~/Git/skills/spec-mode/SKILL.md` reduced to a redirect stub pointing to
-  this plugin (skill artifacts preserved per design decision 5).

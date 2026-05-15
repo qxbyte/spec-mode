@@ -59,17 +59,17 @@ agent 在持久 session 中必须在以下时机调 `heartbeat`：
 
 只读命令（`spec_status.py`、`spec_lint.py`、`load --json`）**不**触发心跳。
 
-## /spec-continue 接管流程
+## /continue 接管流程
 
 ```
-用户：/spec-continue <slug>
+用户：/continue <slug>
 
 代码：
   1. 解析 slug → spec_dir
   2. acquire(currentSession)
      成功 → 进入 spec
      失败（LockHeld）→ 先向用户输出锁状态摘要（持有者 sessionId + 最后活动时间），
-                    然后运行 `references/prompts.md` 中的「/spec-continue 接管」选择器：
+                    然后运行 `references/prompts.md` 中的「/continue 接管」选择器：
                        - 强制接管 → acquire --force
                        - 只读查看 → 加载文档但不 acquire，footer 标记 [只读]
                        - 取消     → 退出
@@ -85,7 +85,7 @@ agent 在持久 session 中必须在以下时机调 `heartbeat`：
 
   ```
   ⚠ 你的会话已被 session <newId> 强制接管。当前 spec 在此窗口已转为只读。
-  继续工作请用 /spec-continue 强制接管回来。
+  继续工作请用 /continue 强制接管回来。
   ```
 
   并将本窗口 `.active-spec-mode.json` 对应条目改为 `status: "evicted"`。后续在该 spec 的任何写操作 → 直接拒绝。
@@ -97,11 +97,11 @@ agent 在持久 session 中必须在以下时机调 `heartbeat`：
 - footer 格式：
 
   ```
-  ─── spec-mode ─── spec: <slug> | session: <id> | phase: <phase> | [只读] | /spec-end 退出
+  ─── spec-mode ─── spec: <slug> | session: <id> | phase: <phase> | [只读] | /end 退出
   ```
 
 - 禁止所有写操作：Edit / Write / heartbeat / `spec_session.py continue|start|iterate` 全部拒绝
-- 用户要切换为可写：再次 `/spec-continue <slug>` 并选"强制接管"
+- 用户要切换为可写：再次 `/continue <slug>` 并选"强制接管"
 
 ## 写前三重校验（铁律）
 

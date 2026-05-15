@@ -1,12 +1,10 @@
-# spec-mode-plugin
+# spec-mode
 
 Specification-driven workflow plugin for **Claude Code** and **CodeBuddy**.
 
-The original `spec-mode` was a skill (markdown instructions). Skills rely on
-the model remembering and obeying rules in context, which degrades as context
-grows. This plugin moves the load-bearing rules into Claude Code hooks —
-deterministic shell commands the harness runs — so the rules are enforced by
-the *runtime*, not by the model's discipline.
+Load-bearing workflow rules are enforced by Claude Code hooks — deterministic
+shell commands the harness runs — rather than relying on the model to
+remember and obey instructions in context.
 
 ## What it enforces
 
@@ -21,16 +19,15 @@ Once a spec is active, these invariants are **harness-enforced**:
 | **INV-5** | Each user turn injects a status block (`spec / phase / lock / turn`) into the model's context | `UserPromptSubmit` |
 | **INV-6** | Source code edits are forbidden in pre-implementation phases (intake / requirements / bugfix / design / tasks) | `PreToolUse` |
 
-INV-1 and INV-2 form the **Code-Doc Sync Guard (CDSG)** — the central
-contribution beyond the original skill.
+INV-1 and INV-2 form the **Code-Doc Sync Guard (CDSG)**.
 
 ## Architecture
 
 ```
 plugin.json              ← Claude Code / CodeBuddy plugin manifest
 hooks/hooks.json         ← 6 event handlers with shell short-circuit on sentinel
-skills/spec-mode/        ← original skill content (SKILL.md + references)
-commands/                ← /spec, /spec-continue, /spec-status, /spec-end
+skills/spec-mode/        ← skill content (SKILL.md + references)
+commands/                ← /start, /continue, /status, /end
 scripts/
   spec_guard.py          ← hook entry; dispatches to handlers; audit log
   spec_state.py          ← read-only state probe + sentinel + Claude-session record
@@ -45,7 +42,7 @@ state/                   ← runtime data (gitignored)
 ## Install (local dev)
 
 ```sh
-claude --plugin-dir /path/to/spec-mode-plugin
+claude --plugin-dir /path/to/spec-mode
 ```
 
 The plugin is discovered automatically; `plugin.json`, `hooks/hooks.json`,
@@ -63,14 +60,14 @@ Hook activity logs to `~/.spec-mode/audit/<date>.log` (UTC).
 Inside a Claude Code session with the plugin loaded:
 
 ```
-/spec-mode:spec --persist <requirement>     # start persistent spec session
-/spec-mode:spec-continue [slug]             # resume / switch
-/spec-mode:spec-status                      # show current session
-/spec-mode:spec-end                         # end persistent session
+/spec-mode:start --persist <requirement>    # start persistent spec session
+/spec-mode:continue [slug]                  # resume / switch
+/spec-mode:status                           # show current session
+/spec-mode:end                              # end persistent session
 
-/spec-mode:spec --freeform                  # relax INV-1 (INV-2 still enforced)
-/spec-mode:spec --strict                    # restore INV-1
-/spec-mode:spec --sync-status               # ledger / pending sync / last violation
+/spec-mode:start --freeform                 # relax INV-1 (INV-2 still enforced)
+/spec-mode:start --strict                   # restore INV-1
+/spec-mode:start --sync-status              # ledger / pending sync / last violation
 ```
 
 Once a spec is active:

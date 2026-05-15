@@ -628,7 +628,7 @@ def command_list_specs(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Document loading (used by /spec-continue context restoration and read-only)
+# Document loading (used by /continue context restoration and read-only)
 # ---------------------------------------------------------------------------
 
 

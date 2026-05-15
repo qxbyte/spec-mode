@@ -13,7 +13,7 @@ Never ask "请回复确认/继续/取消" as plain text without running the scri
 
 ## Template A — Fixed-option Confirmation
 
-Use for: workflow choice, document confirmation, task execution choice, `/spec-continue` takeover, clarification completion.
+Use for: workflow choice, document confirmation, task execution choice, `/continue` takeover, clarification completion.
 
 ```text
 python3 scripts/spec_choice.py --title "<标题以问号结尾？>" \
@@ -59,7 +59,7 @@ Rules:
 
 ## Template C — List + Numeric Selection
 
-Use for: `/spec-continue` 无参数时列出可继续 spec、多 vault 选择。
+Use for: `/continue` 无参数时列出可继续 spec、多 vault 选择。
 
 ```text
 === <列表标题> ===
@@ -91,7 +91,7 @@ Use for: 进入只读模式后每次响应前的提醒。
 
 ```text
 [只读模式] 当前 session 未持有 spec 锁，所有写入操作将被拒绝。
-请用 /spec-continue <slug> 选择"强制接管"恢复可写。
+请用 /continue <slug> 选择"强制接管"恢复可写。
 ```
 
 固定 footer 末尾追加 `| [只读]`。
@@ -102,7 +102,7 @@ Use for: 被驱逐的会话下一次响应时。
 
 ```text
 ⚠ 你的会话已被 session <newSessionId> 强制接管。
-当前 spec 在此窗口已转为只读，请用 /spec-continue 重新接管。
+当前 spec 在此窗口已转为只读，请用 /continue 重新接管。
 ```
 
 ## 标准选择器命令（直接复制使用）
@@ -134,7 +134,7 @@ python3 scripts/spec_choice.py --title "是否开始执行 tasks？" \
   --option "暂不 coding::只保留文档，不开始实现"
 ```
 
-### `/spec-continue` 接管（spec 已被其他 session 锁定）
+### `/continue` 接管（spec 已被其他 session 锁定）
 
 ```text
 python3 scripts/spec_choice.py --title "spec 已被 session <holder> 锁定，如何继续？" \
