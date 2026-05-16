@@ -84,15 +84,7 @@ Once loaded:
 /reload-plugins                    # after editing plugin files
 ```
 
-Hook activity logs to `~/.spec-mode/audit/<date>.log` (UTC). Each daily file
-is capped at 20 MB (override with `SPEC_MODE_AUDIT_MAX_BYTES`); when exceeded,
-the tail half is kept in place. Inspect with:
-
-```sh
-python3 plugins/spec-mode/scripts/spec_state.py audit-tail -n 50
-python3 plugins/spec-mode/scripts/spec_state.py audit-tail --follow
-python3 plugins/spec-mode/scripts/spec_state.py audit-summary --days 7
-```
+Hook activity logs to `~/.spec-mode/audit/<date>.log` (UTC).
 
 ## Usage
 

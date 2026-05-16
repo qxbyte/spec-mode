@@ -79,15 +79,7 @@ codebuddy --plugin-dir ./spec-mode/plugins/spec-mode
 /reload-plugins                    # 修改插件文件后重新加载
 ```
 
-Hook 行为日志写入 `~/.spec-mode/audit/<date>.log`（UTC）。单文件上限 20 MB
-（可通过 `SPEC_MODE_AUDIT_MAX_BYTES` 覆盖）；超过后保留后一半内容、原地重写。
-查看方式：
-
-```sh
-python3 plugins/spec-mode/scripts/spec_state.py audit-tail -n 50
-python3 plugins/spec-mode/scripts/spec_state.py audit-tail --follow
-python3 plugins/spec-mode/scripts/spec_state.py audit-summary --days 7
-```
+Hook 行为日志写入 `~/.spec-mode/audit/<date>.log`（UTC）。
 
 ## 使用
 
