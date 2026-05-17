@@ -61,22 +61,62 @@ class WritebackPlan:
     leaves_status: dict[str, str]   # "1.1" → "done" | "failed" | "skipped"
     fail_reason: str = ""
     annotation: str = ""
+    # R3: surface reviewer advisory verdict as a `> ⚠️` annotation block.
+    # Optional — populated by task_swarm.cmd_writeback when reviewer ran.
+    reviewer_summary: dict | None = None
 
 
 def _annotate(plan: WritebackPlan) -> str:
     if plan.annotation:
         return plan.annotation
-    r_rev = plan.rounds.get("reviewer", 0)
     r_val = plan.rounds.get("validator", 0)
     if plan.stage_phase == "converged":
         rounds_str = ""
-        if r_rev > 1 or r_val > 1:
-            rounds_str = f"（reviewer {r_rev} 轮 / validator {r_val} 轮）"
+        if r_val > 1:
+            rounds_str = f"（validator {r_val} 轮）"
         return f"> ✔ task-swarm 收敛{rounds_str}"
     if plan.stage_phase == "failed":
         reason = f": {plan.fail_reason}" if plan.fail_reason else ""
         return f"> ✗ task-swarm 未收敛{reason}"
     return ""
+
+
+def _reviewer_annotations(summary: dict | None) -> list[str]:
+    """Build `> ⚠️ ...` annotation lines from a reviewer verdict summary.
+
+    Expected shape (from task_swarm_outbox.parse_review):
+      {
+        "judgment": "approved" | "p0" | ...,
+        "p0_count": int,
+        "p0_items": [str, ...],
+        "advisory_p0_count": int,
+        "advisory_p0_items": [str, ...],
+        "conclusion": str,
+      }
+    Returns one or more annotation lines (each prefixed with `> `), or empty
+    list when nothing worth surfacing.
+    """
+    if not summary:
+        return []
+    p0 = summary.get("p0_items") or []
+    adv = summary.get("advisory_p0_items") or []
+    if not p0 and not adv:
+        return []
+    lines: list[str] = []
+    header = "> ⚠️ 评审建议（advisory）："
+    counts = []
+    if p0:
+        counts.append(f"{len(p0)} 条带证据 P0")
+    if adv:
+        counts.append(f"{len(adv)} 条 advisory")
+    lines.append(header + "、".join(counts))
+    for item in p0[:5]:
+        lines.append(f">   • {item}")
+    for item in adv[:3]:
+        lines.append(f">   • (adv) {item}")
+    if len(p0) > 5 or len(adv) > 3:
+        lines.append(">   …（更多见 review.md 完整内容）")
+    return lines
 
 
 def apply_writeback(text: str, plan: WritebackPlan) -> str:
@@ -140,16 +180,22 @@ def apply_writeback(text: str, plan: WritebackPlan) -> str:
 
         out.append(raw)
 
-    # Append annotation immediately after the stage's last content line within the block.
-    if annotation:
-        # Find insertion point: last non-blank line of the stage block.
+    # Append annotation(s) immediately after the stage's last content line.
+    annotations_to_insert: list[str] = []
+    block_text = "".join(out[stage_start:block_end])
+    if annotation and annotation.strip() not in block_text:
+        annotations_to_insert.append("  " + annotation + "\n")
+    for rev_line in _reviewer_annotations(plan.reviewer_summary):
+        if rev_line.strip() not in block_text:
+            annotations_to_insert.append("  " + rev_line + "\n")
+
+    if annotations_to_insert:
         insertion_idx = block_end - 1
         while insertion_idx > stage_start and not out[insertion_idx].strip():
             insertion_idx -= 1
-        annotation_line = ("  " + annotation + "\n")
-        # Avoid duplicate annotations (idempotent writeback).
-        if annotation.strip() not in "".join(out[stage_start:block_end]):
-            out.insert(insertion_idx + 1, annotation_line)
+        # Insert in reverse so the order in final output matches the list.
+        for line in reversed(annotations_to_insert):
+            out.insert(insertion_idx + 1, line)
 
     return "".join(out)
 
@@ -164,49 +210,6 @@ def writeback_to_file(path: Path, plan: WritebackPlan) -> None:
 
 
 # ---------- diff helper for INV-9 ----------
-
-def diff_is_safe(old_text: str, new_text: str) -> tuple[bool, str]:
-    """Returns (safe, reason). Safe iff only allowed changes:
-
-      - line-level checkbox marker swap (` ` ↔ `x` ↔ `~` ↔ `*`) inside `- [ ]`
-      - inserted lines that start with `  > ` (annotation)
-      - whitespace-only lines added/removed
-
-    Anything else (changed metadata / title / heading / `_需求:_` / `文件:`)
-    is rejected.
-    """
-    old_lines = old_text.splitlines()
-    new_lines = new_text.splitlines()
-    import difflib
-    diff = difflib.ndiff(old_lines, new_lines)
-    for line in diff:
-        tag = line[:2]
-        body = line[2:]
-        if tag == "  ":
-            continue
-        if tag == "? ":
-            continue
-        if tag == "- ":
-            paired = _try_find_pair(line, diff)
-            if paired and _is_checkbox_swap(body, paired):
-                continue
-            # Allow removal of empty / annotation lines.
-            if not body.strip() or ANNOTATION_LINE_RE.match(body):
-                continue
-            return False, f"禁止删除非空非注释行: {body!r}"
-        if tag == "+ ":
-            if not body.strip():
-                continue
-            if ANNOTATION_LINE_RE.match(body):
-                continue
-            return False, f"禁止新增非注释行: {body!r}"
-    return True, ""
-
-
-def _try_find_pair(removed_line: str, diff_iter) -> str | None:
-    # Lightweight: just look at the iterator's next item lazily via list materialization elsewhere.
-    return None
-
 
 def _is_checkbox_swap(old: str, new: str) -> bool:
     m_old = re.match(r"^(\s*- \[)[ x~*\-](\].*)$", old)

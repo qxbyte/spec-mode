@@ -160,9 +160,35 @@ def check_inv8_writes_boundary(
         return "ok", ""
     rel_str = str(rel)
     for entry in writes:
-        if rel_str == entry or rel_str == entry.lstrip("./"):
+        if _writes_entry_matches(rel_str, entry):
             return "ok", ""
     return "deny", INV8_MSG.format(target=rel_str, writes=", ".join(writes) or "(无)")
+
+
+def _writes_entry_matches(rel: str, entry: str) -> bool:
+    """Match a target path against an @writes entry.
+
+    Supported forms:
+      - exact file:        `src/api/login.py`
+      - directory (slash): `src/api/`        → any path under src/api/
+      - directory (glob):  `src/api/**`      → any path under src/api/
+
+    Comparison is purely string-based on the POSIX-style relative path; leading
+    `./` and trailing whitespace are normalized away.
+    """
+    e = entry.strip().lstrip("./").strip()
+    if not e:
+        return False
+    if e == rel:
+        return True
+    if e.endswith("/**"):
+        prefix = e[:-3]
+        if not prefix.endswith("/"):
+            prefix += "/"
+        return rel.startswith(prefix)
+    if e.endswith("/"):
+        return rel.startswith(e)
+    return False
 
 
 # ---------- INV-9 ----------
@@ -182,25 +208,17 @@ def check_inv9_tasks_md_diff(old_text: str, new_text: str) -> tuple[str, str]:
     return "deny", INV9_MSG.format(reason=reason)
 
 
-# ---------- INV-10 ----------
+# ---------- INV-10 (deprecated alias) ----------
+#
+# Canonical implementation now lives in task_swarm_outbox.validate_outbox_schema.
+# INV-10 is enforced by the CLI `parse` subcommand (not a Stop hook). These
+# names are preserved to avoid breaking external callers / pre-existing tests.
 
-INV10_MSG = (
-    "task-swarm 守卫 (INV-10): subagent outbox 不符合 schema。\n"
-    "{role}/{fname}:\n  {errors}\n"
-    "请重新生成 outbox/{fname} —— 主编排器靠固定 schema 解析判定, 偏离会导致状态机误判。"
-)
+INV10_MSG = outbox_mod.SCHEMA_ERROR_MSG
 
 
 def check_inv10_outbox_schema(role: str, outbox_dir: Path) -> tuple[str, str]:
-    fname_map = {"coder": "result.md", "reviewer": "review.md", "validator": "validation.md"}
-    fname = fname_map.get(role)
-    if not fname:
-        return "ok", ""
-    result = outbox_mod.parse_outbox(role, outbox_dir)
-    if result.get("judgment") != "schema-error":
-        return "ok", ""
-    errors = result.get("errors") or ["未知错误"]
-    return "deny", INV10_MSG.format(role=role, fname=fname, errors="\n  ".join(errors))
+    return outbox_mod.validate_outbox_schema(role, outbox_dir)
 
 
 # ---------- helpers used by spec_guard handlers ----------

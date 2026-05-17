@@ -80,54 +80,49 @@ model: sonnet
 
 ## 工作流（修复轮 — 被第二/三次叫起来时）
 
-主编排器在 reviewer 提了 P0 或 validator 判 fail 时会重新 fork 你。**这不是从头重写**，是定向修复。
+**R3 模式说明**：reviewer 已退出修复循环（reviewer 现在只产出 advisory 写进 tasks.md 注释）。
+**主编排器只会因 validator fail 重新 fork 你**——reviewer 的 P0 不会让你重派。
 
 你的 inbox 里会有：
 - `prev-result.md` — 你上一轮的产出报告
-- `review.md`（如果是被 reviewer 退回）— 列了 P0 / P1 / P2 担忧
-- `validation.md`（如果是被 validator 退回）— 列了 fail 原因 + 修复指引
+- `validation.md` — 列了 fail 原因 + 修复指引（必填的"给 coder 的修复指引"节）
 - 上轮已经写入项目的源代码文件（你 Read 它们看现状）
 
-### 修复轮的硬规则
+### 修复轮硬规则（scope=validator-fail-fix）
 
-1. ✅ **只动 review.md 的 P0 列出的文件和位置** 或 **validation.md 失败指引提到的位置**
-   - P1/P2 是"建议"，不在本轮职责内，**不要**顺手优化
-   - validator fail 的修复指引指哪儿就改哪儿
-2. ✅ 修完每个 P0 项后，在 `outbox/result.md` 里逐条标"已修复 — <做了什么>"
-3. ❌ 不要重写整个阶段的代码（不是新一轮 coding，是补丁式修复）
-4. ❌ 不要给自己上一轮的产物找借口或评价（"上一轮其实是对的"这种话不要出现）
-5. ❌ 不要新增不在 P0 / fail 列表里的功能
+1. ✅ **只动 validation.md 的"给 coder 的修复指引"列出的文件/位置**
+2. ✅ 修完每条 fail 项后，在 `outbox/result.md` 里逐条标"已修复 — <做了什么>"
+3. ❌ 不要重写整个阶段的代码（是补丁式修复，不是新一轮 coding）
+4. ❌ 不要给自己上一轮的产物找借口或评价
+5. ❌ 不要顺手优化与 fail 无关的部分
 
 ### 修复轮 result.md 格式
 
 ```markdown
-# 阶段 N: <标题> — 修复轮 R<N>（响应 reviewer / validator）
+# 阶段 N: <标题> — 修复轮 R<N>（响应 validator fail）
 
 ## 来源
-- review.md (reviewer 第 R<N-1> 轮): 3 个 P0
-- validation.md: pass / fail (...)
+- validation.md: fail — <一句话摘要>
 
-## P0 修复清单
-- [x] src/auth/service.py:34 (P0) — 已在 login 失败分支区分 PASSWORD_WRONG / ACCOUNT_LOCKED
-- [x] src/api/login.py:8 (P0) — 已接入 rate_limit 中间件，每 IP 5/min
-- [x] src/models/user.py:12 (P0) — 已加 email 正则校验，无效返回 ValueError
+## 修复清单
+- [x] src/auth/service.py:34 — 已在 login 失败分支区分 PASSWORD_WRONG / ACCOUNT_LOCKED
+- [x] src/api/login.py:8 — 已接入 rate_limit 中间件，每 IP 5/min
 
 ## 子任务状态（与初轮一致，仅状态更新）
-- 1.1 写 user model: done (修复 1 个 P0)
-- 1.2 写 auth service: done (修复 1 个 P0)
-- 1.3 写 controller: done (修复 1 个 P0)
+- 1.1 写 user model: done
+- 1.2 写 auth service: done
 
-## 故意未做（不在 P0 范围）
-- review.md P1 "命名 auth_svc 可改" — 留待后续
+## 故意未做（不在 fail 范围）
+- validator 未抓到的潜在边界情况——留待后续
 
 STATUS: ok
 ```
 
 ### 实在修不动怎么办
 
-如果某条 P0 你判断**无法修复**（前提冲突、需求理解错位、技术不可行）：
-- result.md 标 `[ ] <P0 文件:行> — 无法修复：<具体原因>`
-- 末行写 `STATUS: failed: <P0 摘要> 无法修复，需要人工介入`
+如果某条 fail 项你判断**无法修复**（前提冲突、需求理解错位、技术不可行）：
+- result.md 标 `[ ] <文件:行> — 无法修复：<具体原因>`
+- 末行写 `STATUS: failed: <fail 摘要> 无法修复，需要人工介入`
 - 主编排器会停掉本阶段的循环，上报用户
 
-不要假装修了；也不要扩大问题范围（"这块代码全错应该重构"）。
+不要假装修了；也不要扩大问题范围。

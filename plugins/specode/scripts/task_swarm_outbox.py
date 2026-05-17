@@ -26,12 +26,19 @@ LOOP_WARNING_RE = re.compile(r"^## 进入死循环风险\s*$", re.MULTILINE)
 
 
 def _last_status_line(text: str) -> tuple[str | None, str]:
-    """Return (status, reason). status is lowercase or None."""
-    for line in reversed(text.strip().splitlines()):
-        m = STATUS_TAIL_RE.match(line.strip())
-        if m:
-            return m.group(1).lower(), (m.group(2) or "").strip()
-    return None, ""
+    """Return (status, reason) parsed from the *strict last non-empty line*.
+
+    STATUS must appear on the last meaningful line. If the last non-empty line
+    doesn't match, return (None, ""). Even if STATUS appears earlier in the
+    body, we don't accept it — avoids "STATUS in the middle" leakage.
+    """
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    if not lines:
+        return None, ""
+    m = STATUS_TAIL_RE.match(lines[-1].strip())
+    if not m:
+        return None, ""
+    return m.group(1).lower(), (m.group(2) or "").strip()
 
 
 def _section(text: str, heading: str) -> str | None:
@@ -289,6 +296,32 @@ def parse_validation(text: str) -> ValidationVerdict:
 
 
 # ---------- dispatch ----------
+
+SCHEMA_ERROR_MSG = (
+    "task-swarm 守卫 (INV-10): subagent outbox 不符合 schema。\n"
+    "{role}/{fname}:\n  {errors}\n"
+    "请重新生成 outbox/{fname} —— 主编排器靠固定 schema 解析判定, 偏离会导致状态机误判。"
+)
+
+
+def validate_outbox_schema(role: str, outbox_dir: Path) -> tuple[str, str]:
+    """Schema gate used by the CLI parse subcommand (R1: CLI-side enforcement
+    of INV-10, not a hook).
+
+    Returns ("ok", "") when the outbox parses cleanly, ("deny", message) when
+    schema-error is raised. Keep the function signature compatible with the
+    deprecated task_swarm_guard alias for backward compatibility.
+    """
+    fname_map = {"coder": "result.md", "reviewer": "review.md", "validator": "validation.md"}
+    fname = fname_map.get(role)
+    if not fname:
+        return "ok", ""
+    result = parse_outbox(role, outbox_dir)
+    if result.get("judgment") != "schema-error":
+        return "ok", ""
+    errors = result.get("errors") or ["未知错误"]
+    return "deny", SCHEMA_ERROR_MSG.format(role=role, fname=fname, errors="\n  ".join(errors))
+
 
 def parse_outbox(role: str, outbox_dir: Path) -> dict:
     """Parse the appropriate file in outbox_dir for the given role.

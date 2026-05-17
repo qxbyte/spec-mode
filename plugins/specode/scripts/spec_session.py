@@ -319,6 +319,19 @@ def _verify(spec_dir: Path, session_id: str) -> dict[str, Any]:
     return {"status": "not_held", "lock": lock}
 
 
+def verify_and_heartbeat(spec_dir: Path, session_id: str) -> dict[str, Any]:
+    """Public wrapper: verify the caller still holds the lock and refresh heartbeat.
+
+    Returns the same dict shape as _verify. When status == "ok" the lock's
+    heartbeat is bumped as a side-effect. Callers (e.g. task_swarm.writeback)
+    should branch on the returned `status` field.
+    """
+    verify = _verify(spec_dir, session_id)
+    if verify.get("status") == "ok":
+        _heartbeat(spec_dir, session_id)
+    return verify
+
+
 def command_acquire(args: argparse.Namespace) -> int:
     spec_dir = Path(args.spec_dir).expanduser().resolve()
     session_id = normalize_session_id(args.session)

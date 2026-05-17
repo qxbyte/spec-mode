@@ -131,27 +131,24 @@ def cmd_next(args: argparse.Namespace) -> int:
         # Relay upstream artifacts into inbox per role.
         sources: list[tuple[int, str, int, str]] = []
         if role == "reviewer":
+            # Advisory reviewer: just needs the latest coder output.
             sources.append((stage_num, "coder", round_no, "result.md"))
-            if round_no > 1:
-                sources.append((stage_num, "reviewer", round_no - 1, "prev-review.md"))
         elif role == "validator":
-            # Pull most-recent coder + reviewer of this stage if any, plus
-            # for checkpoints the previous stage's full outbox set.
+            # Checkpoint: pull latest coder output of the validated stage.
             if stage["kind"] == "checkpoint" and stage.get("checkpoint_for"):
                 src_stage = stage["checkpoint_for"]
                 sources.append((src_stage, "coder", _max_round_for(state, src_stage, "coder"), "upstream-result.md"))
-                sources.append((src_stage, "reviewer", _max_round_for(state, src_stage, "reviewer"), "upstream-review.md"))
             else:
+                # Normal-stage validator path (kept for forward-compat; not
+                # currently scheduled by next_action).
                 sources.append((stage_num, "coder", round_no, "result.md"))
-                sources.append((stage_num, "reviewer", round_no, "review.md"))
             if round_no > 1:
+                # Re-run after a coder fix — give validator the previous fail report
                 sources.append((stage_num, "validator", round_no - 1, "prev-validation.md"))
         elif role == "coder" and round_no > 1:
-            # fix round
+            # fix round — only validator-fail-fix exists post-R3
             sources.append((stage_num, "coder", round_no - 1, "prev-result.md"))
-            if payload.get("scope") in {"p0-fix"}:
-                sources.append((stage_num, "reviewer", round_no - 1, "review.md"))
-            elif payload.get("scope") in {"validator-fail-fix"}:
+            if payload.get("scope") == "validator-fail-fix":
                 sources.append((stage_num, "validator", round_no - 1, "validation.md"))
 
         prompt_mod.relay_inbox(run_dir, ws, sources)
@@ -209,12 +206,45 @@ def cmd_parse(args: argparse.Namespace) -> int:
     outbox = ws / "outbox"
     result = outbox_mod.parse_outbox(args.role, outbox)
     result["workspace"] = str(ws)
-    result["advance_cmd"] = (
-        f"python3 {Path(__file__).name} advance "
-        f"--run {state_mod.load_state(run_dir)['run_id']} "
-        f"--stage {args.stage} --role {args.role} --round {args.round} "
-        f"--judgment {result['judgment']}"
-    )
+
+    if result.get("judgment") == "schema-error":
+        # R5: on schema-error, snapshot the malformed outbox + clear it so the
+        # next fork starts from a clean slate. Do NOT include advance_cmd —
+        # subagent must be re-forked at the same stage/role/round.
+        snapshot: dict[str, str] = {}
+        if outbox.exists():
+            for f in sorted(outbox.iterdir()):
+                if not f.is_file():
+                    continue
+                try:
+                    snapshot[f.name] = f.read_text(encoding="utf-8", errors="replace")[:2000]
+                except OSError:
+                    continue
+                try:
+                    f.unlink()
+                except OSError:
+                    pass
+        # Clear in_flight so the next `next` call can re-dispatch this fork.
+        state = state_mod.load_state(run_dir)
+        stage = state_mod.get_stage(state, int(args.stage))
+        if stage.get("in_flight"):
+            stage["in_flight"] = None
+            state_mod.save_state(run_dir, state)
+        result["retry"] = True
+        result["outbox_snapshot"] = snapshot
+        result["next"] = (
+            f"重新派发 subagent: stage={args.stage} role={args.role} round={args.round}. "
+            f"outbox 已清空、in_flight 已重置。下一次 `next` 会再次给出同一 fork 指令；"
+            f"把 outbox_snapshot 中的内容粘到 subagent prompt 提示它上次为何被拒。"
+        )
+    else:
+        result["advance_cmd"] = (
+            f"python3 {Path(__file__).name} advance "
+            f"--run {state_mod.load_state(run_dir)['run_id']} "
+            f"--stage {args.stage} --role {args.role} --round {args.round} "
+            f"--judgment {result['judgment']}"
+        )
+
     _print_json(result)
     return 0
 
@@ -231,6 +261,23 @@ def cmd_advance(args: argparse.Namespace) -> int:
         extra["note"] = args.note
     if args.reason:
         extra["reason"] = args.reason
+
+    # Re-parse outbox so the history record captures role-specific detail
+    # (subtasks for coder, p0_items / advisory_p0 for reviewer, fix_files for
+    # validator). writeback uses these to render annotations.
+    try:
+        ws = prompt_mod.agent_workspace(run_dir, int(args.stage), args.role, int(args.round))
+        parsed = outbox_mod.parse_outbox(args.role, ws / "outbox")
+        for key in (
+            "subtasks", "fix_files", "p0_items", "p0_count",
+            "advisory_p0_items", "advisory_p0_count", "conclusion",
+            "fix_guidance", "loop_warning",
+        ):
+            if key in parsed and parsed[key] not in (None, "", [], 0):
+                extra[key] = parsed[key]
+    except Exception:
+        # If outbox is missing or unreadable, fall through with bare verdict.
+        pass
 
     try:
         stage = state_mod.advance(
@@ -269,24 +316,26 @@ def cmd_writeback(args: argparse.Namespace) -> int:
         return 2
 
     # Verify-lock + heartbeat before write.
+    warnings: list[str] = []
     try:
         import spec_session
-        verify = spec_session._verify(Path(state["spec_dir"]), state.get("session_id") or "")
+        verify = spec_session.verify_and_heartbeat(
+            Path(state["spec_dir"]), state.get("session_id") or ""
+        )
         if verify.get("status") == "evicted":
             _print_json({"error": "lock evicted", "verify": verify})
             return 3
-        if verify.get("status") == "ok":
-            spec_session._heartbeat(Path(state["spec_dir"]), state["session_id"])
     except SystemExit as e:
         # spec_session.load_config raises SystemExit when .config.json absent —
         # treat as "no lock model" and proceed.
-        sys.stderr.write(f"[task_swarm] verify-lock skipped (no spec config): {e}\n")
+        warnings.append(f"verify-lock skipped (no spec config): {e}")
     except Exception as e:
         # non-fatal — lock model may not be in effect for this spec
-        sys.stderr.write(f"[task_swarm] verify-lock skipped: {e}\n")
+        warnings.append(f"verify-lock skipped: {e}")
 
     # Build writeback plan from history.
     leaves_status: dict[str, str] = {}
+    reviewer_summary: dict | None = None
     for record in stage.get("history", []):
         if record["role"] == "coder" and record.get("subtasks"):
             for st in record["subtasks"]:
@@ -296,6 +345,16 @@ def cmd_writeback(args: argparse.Namespace) -> int:
             for leaf in stage["leaves"]:
                 if leaf.get("policy") != "skip":
                     leaves_status.setdefault(leaf["num"], "done")
+        # R3: capture the latest reviewer verdict (advisory) for annotation.
+        if record["role"] == "reviewer":
+            reviewer_summary = {
+                "judgment": record.get("judgment"),
+                "p0_count": record.get("p0_count", 0),
+                "p0_items": record.get("p0_items", []),
+                "advisory_p0_count": record.get("advisory_p0_count", 0),
+                "advisory_p0_items": record.get("advisory_p0_items", []),
+                "conclusion": record.get("conclusion", ""),
+            }
 
     plan = wb_mod.WritebackPlan(
         stage_num=stage["num"],
@@ -303,6 +362,7 @@ def cmd_writeback(args: argparse.Namespace) -> int:
         rounds=stage["rounds"],
         leaves_status=leaves_status,
         fail_reason=stage.get("fail_reason") or "",
+        reviewer_summary=reviewer_summary,
     )
 
     text = tasks_path.read_text(encoding="utf-8")
@@ -320,12 +380,15 @@ def cmd_writeback(args: argparse.Namespace) -> int:
     state_mod.mark_written_back(state, stage["num"])
     state_mod.save_state(run_dir, state)
 
-    _print_json({
+    payload = {
         "stage": stage["num"],
         "phase": stage["phase"],
         "written": True,
         "next": f"python3 {Path(__file__).name} next --run {state['run_id']}",
-    })
+    }
+    if warnings:
+        payload["warnings"] = warnings
+    _print_json(payload)
     return 0
 
 
@@ -363,6 +426,37 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+# ---------- reset-in-flight ----------
+
+def cmd_reset_in_flight(args: argparse.Namespace) -> int:
+    """Clear in_flight on one or all stages — recovery after a subagent vanished.
+
+    Without --stage: clears every stage's in_flight marker.
+    """
+    project_root = Path(args.project_root or os.getcwd()).expanduser().resolve()
+    try:
+        run_dir = resolve_run_dir(project_root, args.run)
+    except FileNotFoundError as e:
+        _print_json({"error": str(e)})
+        return 2
+    state = state_mod.load_state(run_dir)
+
+    cleared: list[dict] = []
+    if args.stage is None:
+        for s in state["stages"]:
+            if s.get("in_flight"):
+                cleared.append({"stage": s["num"], "prev": s["in_flight"]})
+                s["in_flight"] = None
+    else:
+        stage = state_mod.get_stage(state, int(args.stage))
+        if stage.get("in_flight"):
+            cleared.append({"stage": stage["num"], "prev": stage["in_flight"]})
+            stage["in_flight"] = None
+    state_mod.save_state(run_dir, state)
+    _print_json({"cleared": cleared, "count": len(cleared)})
+    return 0
+
+
 # ---------- resolve ----------
 
 def cmd_resolve(args: argparse.Namespace) -> int:
@@ -392,11 +486,11 @@ def main(argv: list[str]) -> int:
     p.add_argument("--parallel", default=3, type=int)
     p.add_argument(
         "--max-rounds", default=3, type=int,
-        help="所有角色循环上限的 fallback（推荐用 --reviewer-rounds/--validator-rounds 分别设置）",
+        help="所有循环角色（目前仅 validator）的 fallback 上限",
     )
     p.add_argument(
-        "--reviewer-rounds", default=1, type=int,
-        help="reviewer P0 修复循环上限（默认 1 — reviewer 判断主观性高，紧循环防对抗式空转）",
+        "--reviewer-rounds", default=None, type=int,
+        help="（已弃用）reviewer 现在是 advisory，不再参与修复循环。保留参数仅为兼容旧脚本",
     )
     p.add_argument(
         "--validator-rounds", default=3, type=int,
@@ -445,6 +539,15 @@ def main(argv: list[str]) -> int:
     p.add_argument("--run", default=None)
     p.add_argument("--project-root", default=None)
     p.set_defaults(func=cmd_resolve)
+
+    p = sub.add_parser(
+        "reset-in-flight",
+        help="清理 in_flight 标记（subagent 崩溃/超时后的恢复手段）",
+    )
+    p.add_argument("--run", default=None)
+    p.add_argument("--stage", default=None, help="留空清理所有 stage")
+    p.add_argument("--project-root", default=None)
+    p.set_defaults(func=cmd_reset_in_flight)
 
     args = parser.parse_args(argv)
     return args.func(args)

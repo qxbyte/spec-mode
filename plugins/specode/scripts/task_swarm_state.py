@@ -52,6 +52,7 @@ from typing import Any
 # ---------- io ----------
 
 STATE_FILENAME = "state.json"
+CURRENT_STATE_VERSION = 1
 
 
 def _now() -> str:
@@ -62,11 +63,41 @@ def state_path(run_dir: Path) -> Path:
     return run_dir / STATE_FILENAME
 
 
+# Registry of one-step migrations: MIGRATIONS[N] takes a v=N state and
+# returns a v=N+1 state. Empty until a schema change ships.
+MIGRATIONS: dict[int, "callable"] = {}
+
+
+def migrate_state(state: dict) -> dict:
+    """Run all registered migrations up to CURRENT_STATE_VERSION.
+
+    Future versions (newer than runtime) pass through with a recorded warning;
+    missing migration entries between known versions raise ValueError so we
+    don't silently run on half-migrated state.
+    """
+    v = int(state.get("version", 1))
+    while v < CURRENT_STATE_VERSION:
+        fn = MIGRATIONS.get(v)
+        if fn is None:
+            raise ValueError(
+                f"task_swarm_state: missing migration from version {v} → {v + 1}"
+            )
+        state = fn(state)
+        v = int(state.get("version", v + 1))
+    if v > CURRENT_STATE_VERSION:
+        state.setdefault("warnings", []).append(
+            f"[WARN] state version {v} is newer than runtime ({CURRENT_STATE_VERSION}); "
+            f"proceeding with best-effort compatibility"
+        )
+    return state
+
+
 def load_state(run_dir: Path) -> dict:
     p = state_path(run_dir)
     if not p.exists():
         raise FileNotFoundError(f"state.json not found at {p}")
-    return json.loads(p.read_text(encoding="utf-8"))
+    state = json.loads(p.read_text(encoding="utf-8"))
+    return migrate_state(state)
 
 
 def save_state(run_dir: Path, state: dict) -> None:
@@ -289,12 +320,25 @@ def next_action(state: dict) -> Action:
 
 
 def _next_role_for_stage(state: dict, stage: dict) -> dict | None:
-    """For a single stage, determine its next dispatch step (role + round).
+    """Decide the next dispatch step for a single stage.
 
-    Returns None if the stage is in a state that needs no fork (e.g., it's
-    actually done and pending writeback — caller checks that separately).
+    Pipeline (post-R3 redesign):
+
+      - Normal stage (kind=stage):
+          coder ok → reviewer (advisory; never triggers fix loops) → converged
+          coder-only / no reviewable leaves → converged directly after coder ok
+      - Checkpoint stage (kind=checkpoint):
+          validator pass → converged
+          validator fail (within budget) → coder fix → validator re-run
+          validator fail (at cap) → failed
+          (reviewer NEVER runs on a checkpoint — the validator IS the gate)
+
+    reviewer no longer participates in fix loops. Its verdict (approved /
+    p0 / advisory_p0) is captured in history so writeback can surface the
+    findings as `> ⚠️` annotation on tasks.md for the user to act on.
+
+    Returns None when nothing more to fork (caller will writeback or done).
     """
-    rev_max = _role_max_rounds(state, "reviewer")
     val_max = _role_max_rounds(state, "validator")
     last = stage.get("last")
     kind = stage["kind"]
@@ -303,9 +347,8 @@ def _next_role_for_stage(state: dict, stage: dict) -> dict | None:
     if stage["phase"] == "pending":
         if kind == "checkpoint":
             return {"role": "validator", "round": 1}
-        # regular stage starts with coder
         if not any(l.get("policy") != "skip" for l in stage["leaves"]):
-            return None  # nothing to do
+            return None
         return {"role": "coder", "round": 1}
 
     if stage["phase"] != "running":
@@ -322,27 +365,20 @@ def _next_role_for_stage(state: dict, stage: dict) -> dict | None:
     # --- coder finished ---
     if role == "coder":
         if judgment in {"failed", "blocked"}:
-            return None  # caller will have flipped phase to failed; defensive
+            return None  # caller flipped phase to failed; defensive
         if kind == "checkpoint":
-            # checkpoint coder fix → re-validate after a reviewer quick check
-            return {"role": "reviewer", "round": round_no, "scope": "post-fix"}
-        # normal stage: any reviewable leaf → reviewer; else go straight to validator-less convergence
+            # checkpoint coder fix → re-validate (validator counts on its own round axis)
+            val_rounds = [h["round"] for h in stage.get("history", []) if h["role"] == "validator"]
+            next_round = (max(val_rounds) if val_rounds else 0) + 1
+            return {"role": "validator", "round": next_round, "scope": "re-run"}
+        # Normal stage: dispatch reviewer (advisory) if any reviewable leaf exists
         if any(l.get("policy") in {"full", "default"} for l in stage["leaves"]):
-            return {"role": "reviewer", "round": round_no}
-        # all leaves are coder-only → stage converges directly (no reviewer, no validator)
+            return {"role": "reviewer", "round": round_no, "scope": "advisory"}
+        # All coder-only → stage converges directly (no reviewer)
         return None
 
-    # --- reviewer finished ---
+    # --- reviewer finished (advisory; never schedules another fork) ---
     if role == "reviewer":
-        if judgment == "approved":
-            # If this stage has a paired checkpoint elsewhere, validator runs
-            # via that checkpoint stage. The stage itself converges here.
-            return None
-        if judgment == "p0":
-            if round_no >= rev_max:
-                return None  # caller marks failed
-            return {"role": "coder", "round": round_no + 1, "scope": "p0-fix"}
-        # loop / schema-error / other → caller decides terminal state
         return None
 
     # --- validator finished ---
@@ -351,8 +387,8 @@ def _next_role_for_stage(state: dict, stage: dict) -> dict | None:
             return None  # caller marks converged
         if judgment == "fail":
             if round_no >= val_max:
-                return None
-            # fork coder fix; next reviewer-quick-check then re-validate
+                return None  # caller marks failed
+            # Coder fix → validator re-run (no reviewer post-fix on checkpoints)
             return {"role": "coder", "round": round_no + 1, "scope": "validator-fail-fix"}
         return None
 
@@ -404,7 +440,6 @@ def advance(state: dict, stage_num: int, role: str, round_no: int, judgment: str
     stage["in_flight"] = None
 
     # Terminal-state inference
-    rev_max = _role_max_rounds(state, "reviewer")
     val_max = _role_max_rounds(state, "validator")
     kind = stage["kind"]
 
@@ -424,20 +459,15 @@ def advance(state: dict, stage_num: int, role: str, round_no: int, judgment: str
         return stage
 
     if role == "reviewer":
-        if judgment in {"loop", "schema-error"}:
-            stage["phase"] = "failed"
-            stage["fail_reason"] = f"reviewer {judgment}"
-            return stage
-        if judgment == "approved":
-            # Stage converges if no separate checkpoint exists; otherwise wait
-            # for the checkpoint's validator. We mark the stage converged either
-            # way — the checkpoint is a different stage that runs independently.
+        # R3: reviewer is now purely advisory. It never causes a stage to fail
+        # and never triggers a coder fix loop. The verdict (approved / p0 with
+        # evidence / advisory_p0) lives in `history` so writeback can surface
+        # the findings as `> ⚠️` annotations in tasks.md.
+        # schema-error / loop don't reach advance: cmd_parse retries the subagent.
+        # If somehow they do, we still converge — reviewer is non-blocking.
+        if kind == "stage":
             stage["phase"] = "converged"
-            return stage
-        if judgment == "p0" and round_no >= rev_max:
-            stage["phase"] = "failed"
-            stage["fail_reason"] = f"reviewer P0 after {round_no} rounds (cap={rev_max})"
-            return stage
+        return stage
 
     if role == "validator":
         if judgment in {"loop", "schema-error"}:
@@ -452,7 +482,7 @@ def advance(state: dict, stage_num: int, role: str, round_no: int, judgment: str
             stage["fail_reason"] = f"validator FAIL after {round_no} rounds (cap={val_max})"
             return stage
 
-    # coder ok / p0 within budget / fail within budget — stay running
+    # coder ok / validator fail within budget — stay running
     return stage
 
 

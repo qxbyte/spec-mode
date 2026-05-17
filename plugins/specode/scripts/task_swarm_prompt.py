@@ -130,7 +130,7 @@ def _inbox_listing(workspace: Path) -> str:
 
 def render_coder_prompt(ctx: StageContext) -> str:
     writes = _writes_clause(ctx.leaves)
-    is_fix = ctx.round_no > 1 and ctx.scope in {"p0-fix", "validator-fail-fix"}
+    is_fix = ctx.round_no > 1 and ctx.scope == "validator-fail-fix"
     header = (
         f"你正在 task-swarm 流程中作为 CODER 子 agent 执行阶段 {ctx.stage_num}"
         + (f"（修复轮 r{ctx.round_no}，scope={ctx.scope}）" if is_fix else "（初轮）")
@@ -160,10 +160,10 @@ def render_coder_prompt(ctx: StageContext) -> str:
 
     if is_fix:
         body += [
-            "## 修复轮硬规则",
-            "1. 只动 inbox/review.md 列出的 **P0** 项（或 inbox/validation.md 的修复指引）涉及的文件/位置",
-            "2. P1/P2 不在本轮职责内，不要顺手优化",
-            "3. 修完每条 P0 在 outbox/result.md 用 `- [x] <P0 摘要> — 已修复: ...` 标记",
+            "## 修复轮硬规则（validator-fail-fix）",
+            "1. 只动 inbox/validation.md 修复指引中提到的文件/位置",
+            "2. 不要顺手优化、不要扩大范围",
+            "3. 修完每条 fail 在 outbox/result.md 用 `- [x] <fail 摘要> — 已修复: ...` 标记",
             "4. 不要重写整个阶段，是定向补丁",
             "",
         ]
@@ -182,7 +182,7 @@ def render_coder_prompt(ctx: StageContext) -> str:
         "## 关键变更",
         "- ...",
         "",
-        "## 给下游 reviewer 的提示",
+        "## 给下游（reviewer / validator）的提示",
         "- ...",
         "```",
         "",
@@ -199,11 +199,8 @@ def render_coder_prompt(ctx: StageContext) -> str:
 
 
 def render_reviewer_prompt(ctx: StageContext) -> str:
-    is_post_fix = ctx.scope == "post-fix"
     header = (
-        f"你正在 task-swarm 流程中作为 REVIEWER 子 agent 评审阶段 {ctx.stage_num}"
-        + (f"（复审第 r{ctx.round_no} 轮）" if ctx.round_no > 1 else "（初评）")
-        + "。"
+        f"你正在 task-swarm 流程中作为 REVIEWER 子 agent 评审阶段 {ctx.stage_num}（advisory 模式）。"
     )
 
     body = [
@@ -211,11 +208,17 @@ def render_reviewer_prompt(ctx: StageContext) -> str:
         "",
         f"# 阶段 {ctx.stage_num}: {ctx.stage_title}",
         "",
+        "## 你的角色（**advisory，不阻塞推进**）",
+        "- reviewer 是**建议提供者**，**不参与修复循环**。",
+        "- 你的产出会作为 `> ⚠️ 评审建议` 注释**写进 tasks.md**，供使用者决定是否人工跟进。",
+        "- coder 不会因为你的 P0 而被重新派发；validator 才是阻塞门。",
+        "- 你存在的意义：把 LLM 读代码的发现做成结构化报告，供下游审阅。",
+        "",
         "## 评审范围",
         _leaves_block(ctx.leaves),
         "",
         "## 边界",
-        "- 你**没有** Edit/Write 工具——这是物理隔离，想改也改不了。",
+        "- 你**没有** Edit/Write 工具——这是物理隔离。",
         "- 仅用 Bash 写 outbox/review.md。",
         f"- inbox: {ctx.workspace / 'inbox'}",
         f"- outbox: {ctx.workspace / 'outbox'}",
@@ -224,18 +227,6 @@ def render_reviewer_prompt(ctx: StageContext) -> str:
         "## inbox 内容",
         _inbox_listing(ctx.workspace),
         "",
-    ]
-
-    if is_post_fix:
-        body += [
-            "## 本轮特别说明（post-fix 复审）",
-            "- 这是 validator fail 后 coder 修复的复审。",
-            "- 只看本轮 coder 改动的文件，不重新评全阶段。",
-            "- 主要确认：fail 指引列出的问题被解决、没引入新回归。",
-            "",
-        ]
-
-    body += [
         "## 输出协议（严格，主编排器要解析）",
         "在 outbox/review.md 写入：",
         "",
@@ -243,37 +234,33 @@ def render_reviewer_prompt(ctx: StageContext) -> str:
         "## 结论",
         "needs-changes | approved-with-comments | approved",
         "",
-        "## P0 — 阻塞，coder 必须修复（修完才能进 validator）",
+        "## P0 — 严重建议（带证据标签的强提醒，写入 tasks.md 注释）",
         "- <文件:行> [req:x.y] — <问题> — <建议>",
         "- <文件:行> [security] — <安全/数据完整性问题> — <建议>",
         "- <文件:行> [contract] — <接口契约不一致> — <建议>",
         "（如无 P0 写 `(none)`，不要省略本节）",
         "",
-        "## P1 — 建议修复，不阻塞",
+        "## P1 — 建议",
         "- ...",
         "",
         "## P2 — 可选改进",
         "- ...",
         "",
-        "## 给 validator 的提示",
-        "- 重点跑：...",
+        "## 给使用者的提示",
+        "- 关键担忧汇总（1-3 行）",
         "```",
         "",
         "末行：`STATUS: ok`（无论 approved 或 needs-changes 都 ok）。",
         "",
         "## P0 证据标签规则（**重要**）",
-        "P0 行**必须**带下列证据标签之一，否则会被主编排器**自动降级为 advisory**（只入档审计、不触发 coder 修复轮）：",
+        "P0 行**必须**带下列证据标签之一，否则会被自动归入 advisory（仅入档）：",
         "",
         "- `[req:x.y]` — 直接违反某条 `_需求：x.y_` 的 SHALL 语句",
         "- `[security]` — 安全 / 数据完整性问题（注入、越权、token 泄漏、并发不安全等）",
         "- `[contract]` — 接口契约不一致（A 子任务说返回 token，B 子任务期望 session_id）",
         "",
-        "**没有证据标签 = 不是阻塞 P0**。如果你只是『觉得』代码可以更好但说不出具体的需求/安全/契约依据，请放进 P1 而不是 P0。",
-        "这条规则的目的：reviewer 是 LLM 读代码，主观倾向容易让 coder 在多轮无意义修复中空转；",
-        "强制举证把『印象』逼成『证据』，没证据的担忧仍然有价值——但走 P1 路径不阻塞推进。",
-        "",
-        "**死循环识别**：如果本轮 P0 与 inbox 中 prev-review.md 完全一致，",
-        "在文件**顶部**加 `## 进入死循环风险` 节，主编排器会立刻终止本阶段。",
+        "**没有证据标签 = 仅 advisory**——但所有 P0 / advisory 都会写入 tasks.md 注释供人审阅。",
+        "证据标签让使用者一眼区分'有客观依据的问题'与'风格/印象'。",
         "",
         "**零 P0 是允许的**——但必须扫完每个文件、每个子任务才能下结论。",
     ]

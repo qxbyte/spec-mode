@@ -106,6 +106,42 @@ def test_inv8_allows_outbox_writes():
         assert decision == "ok"
 
 
+# ---------- R4: directory-form @writes ----------
+
+def test_inv8_dir_with_trailing_slash_allows_child():
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        ws, proj, spec = _make_subagent_ws(tmp, ["src/api/"])
+        target = proj / "src/api/__init__.py"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("")
+        decision, _ = G.check_inv8_writes_boundary(target, ws, proj, spec)
+        assert decision == "ok"
+
+
+def test_inv8_dir_glob_allows_nested():
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        ws, proj, spec = _make_subagent_ws(tmp, ["src/api/**"])
+        target = proj / "src/api/v1/users.py"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("")
+        decision, _ = G.check_inv8_writes_boundary(target, ws, proj, spec)
+        assert decision == "ok"
+
+
+def test_inv8_dir_does_not_match_sibling():
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        ws, proj, spec = _make_subagent_ws(tmp, ["src/api/"])
+        target = proj / "src/admin/users.py"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("")
+        decision, msg = G.check_inv8_writes_boundary(target, ws, proj, spec)
+        assert decision == "deny"
+        assert "INV-8" in msg
+
+
 # ---------- INV-9 ----------
 
 OLD_TASKS = """\

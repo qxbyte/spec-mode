@@ -323,3 +323,20 @@ def test_parse_outbox_missing_file():
         v = O.parse_outbox("coder", Path(td))
         assert v["judgment"] == "schema-error"
         assert any("result.md" in e for e in v["errors"])
+
+
+# ---------- R10: STATUS must be the strict last non-empty line ----------
+
+def test_status_in_middle_does_not_count():
+    text = (
+        "## 子任务状态\n"
+        "- 1.1 写 a: done — src/a.py\n"
+        "\n"
+        "STATUS: ok\n"
+        "\n"
+        "## 关键变更\n"
+        "- 后写的内容把 STATUS 推离末尾\n"
+    )
+    v = O.parse_result(text)
+    assert v.judgment == "schema-error"
+    assert any("STATUS" in e for e in v.raw_errors)
