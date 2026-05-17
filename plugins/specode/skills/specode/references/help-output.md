@@ -29,6 +29,15 @@ Obsidian / 根目录配置
 任何时候都可以重新运行 --set-vault / --set-root 修改根目录；新值立即写入
 ~/.config/specode/config.json 并被后续命令使用。
 
+代码-文档同步守卫（CDSG）
+  /spec --freeform                      当前 spec 切到 freeform 模式
+                                        放宽 INV-1（允许改未在 tasks.md 登记的源码）
+                                        INV-2 仍生效（turn 内必须有任意 spec doc 改动）
+                                        适合探索性开发 / 临时实验
+  /spec --strict                        恢复严格模式（默认）
+                                        改源码前必须先动 spec doc 或文件已在 tasks.md
+  /spec --sync-status                   显示同步账本：tasks_files / turn 改动 / 最近违规
+
 帮助
   /spec -h                              显示本帮助
 
