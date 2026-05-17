@@ -87,6 +87,34 @@ Once loaded:
 
 Hook activity logs to `~/.specode/audit/<date>.log` (UTC).
 
+### Uninstall
+
+```sh
+# 1. Uninstall the plugin first
+claude plugin uninstall specode@specode
+
+# 2. Then remove the marketplace
+claude plugin marketplace remove specode
+
+# 3. (optional) Remove user-level runtime state — NOT touched by step 1
+rm -rf ~/.specode ~/.config/specode
+# also vault-side index if you want a fully clean slate:
+#   find <obsidian-vault> -name '.active-specode.json' -delete
+```
+
+Notes:
+- **Order matters**: uninstall the plugin *before* the marketplace, otherwise
+  Claude Code reports an orphaned plugin on next start.
+- `claude plugin uninstall` only removes the install record; the plugin cache
+  under `~/.claude/plugins/cache/specode/` is garbage-collected ~7 days after
+  it becomes orphaned. To reclaim disk immediately: `rm -rf ~/.claude/plugins/cache/specode/`.
+- `~/.specode/` and `~/.config/specode/` are *user* state (audit logs, sessions,
+  obsidianRoot config) and are deliberately **not** removed by the uninstall
+  commands — you keep your spec history across reinstalls. Delete them manually
+  if you want a clean slate.
+- To temporarily disable without uninstalling: `claude plugin disable specode@specode`
+  (and `enable` to bring it back).
+
 ## Task-Swarm Mode (multi-agent acceleration)
 
 After tasks are confirmed, the "task execution" selector offers a third option

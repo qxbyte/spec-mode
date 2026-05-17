@@ -81,6 +81,34 @@ codebuddy --plugin-dir ./specode/plugins/specode
 
 Hook 行为日志写入 `~/.specode/audit/<date>.log`（UTC）。
 
+### 卸载
+
+```sh
+# 1. 先卸载插件
+claude plugin uninstall specode@specode
+
+# 2. 再移除 marketplace
+claude plugin marketplace remove specode
+
+# 3.（可选）清理用户级运行时状态（步骤 1 不会动这些）
+rm -rf ~/.specode ~/.config/specode
+# 想彻底清干净还可以删 vault 里的索引文件：
+#   find <obsidian-vault> -name '.active-specode.json' -delete
+```
+
+注意事项：
+
+- **顺序很重要**：必须先卸 plugin 再卸 marketplace，否则 Claude Code 下次启动会
+  报 orphaned plugin 警告。
+- `claude plugin uninstall` 只移除安装记录；`~/.claude/plugins/cache/specode/`
+  下的缓存会在 orphan 后约 7 天自动 GC。想立刻回收磁盘：
+  `rm -rf ~/.claude/plugins/cache/specode/`。
+- `~/.specode/` 和 `~/.config/specode/` 是 *用户* 数据（audit 日志、会话记录、
+  obsidianRoot 配置），卸载命令**故意不动**它们——这样重装时你的 spec 历史不丢。
+  想从头开始就手动删。
+- 只想**临时禁用**而不卸载：`claude plugin disable specode@specode`（用
+  `enable` 启回来）。
+
 ## 使用
 
 会话内（插件已加载）：
