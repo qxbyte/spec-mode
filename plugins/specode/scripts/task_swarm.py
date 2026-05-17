@@ -85,6 +85,8 @@ def cmd_init(args: argparse.Namespace) -> int:
         plan=plan,
         parallel=int(args.parallel),
         max_rounds=int(args.max_rounds),
+        reviewer_max_rounds=int(args.reviewer_rounds) if args.reviewer_rounds is not None else None,
+        validator_max_rounds=int(args.validator_rounds) if args.validator_rounds is not None else None,
         session_id=session_id,
     )
     state_mod.save_state(run_dir, state)
@@ -388,7 +390,18 @@ def main(argv: list[str]) -> int:
     p.add_argument("--tasks", required=True, help="tasks.md 绝对路径")
     p.add_argument("--project-root", default=None)
     p.add_argument("--parallel", default=3, type=int)
-    p.add_argument("--max-rounds", default=3, type=int)
+    p.add_argument(
+        "--max-rounds", default=3, type=int,
+        help="所有角色循环上限的 fallback（推荐用 --reviewer-rounds/--validator-rounds 分别设置）",
+    )
+    p.add_argument(
+        "--reviewer-rounds", default=1, type=int,
+        help="reviewer P0 修复循环上限（默认 1 — reviewer 判断主观性高，紧循环防对抗式空转）",
+    )
+    p.add_argument(
+        "--validator-rounds", default=3, type=int,
+        help="validator fail 修复循环上限（默认 3 — 测试驱动的修复有客观信号）",
+    )
     p.add_argument("--session", default=None, help="spec session id（缺省取 TERM_SESSION_ID）")
     p.set_defaults(func=cmd_init)
 

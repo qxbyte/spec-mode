@@ -94,8 +94,8 @@ REVIEW_P0 = """\
 needs-changes
 
 ## P0 — 阻塞，coder 必须修复（修完才能进 validator）
-- src/auth/service.py:34 — login 失败没区分错误码
-- src/api/login.py:8 — 缺 rate limit
+- src/auth/service.py:34 [req:1.3] — login 失败没区分错误码
+- src/api/login.py:8 [security] — 缺 rate limit
 
 ## P1 — 建议修复，不阻塞
 - src/models/user.py:12 — email
@@ -121,6 +121,78 @@ def test_parse_review_loop_warning():
     assert v.loop_warning is True
 
 
+# ---------- P0 evidence-tag rules (C) ----------
+
+REVIEW_P0_NO_TAGS = """\
+## 结论
+needs-changes
+
+## P0 — 阻塞，coder 必须修复（修完才能进 validator）
+- src/auth/service.py:34 — 我觉得这里命名不够清晰
+- src/api/login.py:8 — 可以加点防御性校验
+
+## P1 — 建议修复，不阻塞
+- ...
+
+## P2 — 可选改进
+- 命名
+
+STATUS: ok
+"""
+
+
+def test_parse_review_no_evidence_tags_downgrades_to_advisory():
+    """P0 lines without [req:..]/[security]/[contract] tag → advisory only."""
+    v = O.parse_review(REVIEW_P0_NO_TAGS)
+    assert v.judgment == "approved"  # no blocking P0 → approved
+    assert v.p0_count == 0
+    assert v.advisory_p0_count == 2
+    assert "service.py" in v.advisory_p0_items[0]
+
+
+REVIEW_P0_MIXED = """\
+## 结论
+needs-changes
+
+## P0 — 阻塞，coder 必须修复（修完才能进 validator）
+- src/auth/service.py:34 [req:1.3] — 违反 SHALL 1.3
+- src/api/login.py:8 — 我觉得这里可以更好（无证据）
+- src/api/login.py:22 [contract] — 接口契约不一致
+
+## P1 — 建议
+- ...
+
+## P2 — 可选
+- ...
+
+STATUS: ok
+"""
+
+
+def test_parse_review_mixed_tags_only_tagged_block():
+    v = O.parse_review(REVIEW_P0_MIXED)
+    assert v.judgment == "p0"
+    assert v.p0_count == 2  # only the two tagged items
+    assert v.advisory_p0_count == 1
+    assert "[req:1.3]" in v.p0_items[0]
+    assert "[contract]" in v.p0_items[1]
+    assert "无证据" in v.advisory_p0_items[0]
+
+
+def test_parse_review_req_tag_with_dotted_id():
+    text = REVIEW_P0_MIXED.replace("[req:1.3]", "[req:2.4.7]")
+    v = O.parse_review(text)
+    assert v.p0_count == 2
+    assert "[req:2.4.7]" in v.p0_items[0]
+
+
+def test_parse_review_tag_case_insensitive():
+    text = REVIEW_P0_MIXED.replace("[security]", "[SECURITY]").replace("[contract]", "[Contract]")
+    v = O.parse_review(text)
+    # Two tagged items remain blocking (one with [req:1.3], one with [Contract])
+    assert v.p0_count == 2
+
+
 def test_parse_review_missing_p0_section():
     text = "## 结论\napproved\n\nSTATUS: ok\n"
     v = O.parse_review(text)
@@ -138,7 +210,7 @@ def test_parse_review_short_p0_heading():
     """Reviewer might emit `## P0` instead of the long form."""
     text = (
         "## 结论\nneeds-changes\n\n"
-        "## P0\n- src/x.py:1 — bad\n\nSTATUS: ok\n"
+        "## P0\n- src/x.py:1 [req:1.1] — bad\n\nSTATUS: ok\n"
     )
     v = O.parse_review(text)
     assert v.judgment == "p0"

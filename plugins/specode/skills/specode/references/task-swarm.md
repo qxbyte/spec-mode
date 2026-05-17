@@ -141,7 +141,25 @@ running stage, last action was:
   validator loop / schema-error → fail
 ```
 
-reviewer 循环 与 validator 循环 **各自独立计数**。MAX_ROUNDS 默认 3，可被 `--max-rounds N` 覆盖。
+reviewer 循环 与 validator 循环 **各自独立计数**且**各自有独立默认上限**：
+
+- **reviewer 默认 1 轮**（`--reviewer-rounds N`）—— reviewer 是 LLM 读代码下结论，判断主观性高；紧循环防止"觉得不够好→改→觉得过度防御→再改"的对抗式空转
+- **validator 默认 3 轮**（`--validator-rounds N`）—— validator 是跑代码下结论，测试 fail 是客观信号，给足修复机会
+- `--max-rounds N` 作为 fallback 默认（不传 reviewer/validator 参数时两者均取此值）
+
+### reviewer P0 证据标签（C 规则）
+
+reviewer 输出 P0 时必须带证据标签之一，否则 `task_swarm_outbox.parse_review` 会把它降级为 `advisory_p0`（只入档审计，不计入 `p0_count`，不触发 coder 修复轮）：
+
+| 标签 | 含义 |
+|---|---|
+| `[req:x.y]` | 直接违反某条 `_需求：x.y_` 的 SHALL |
+| `[security]` | 安全 / 数据完整性问题 |
+| `[contract]` | 接口契约不一致（上下游对返回类型/字段名理解不同） |
+
+设计意图：reviewer 主观判断容易让 coder 在无意义循环中空转。强制举证把"印象"逼成"证据"——没证据的担忧仍然记录在 `advisory_p0_items`，但走 P1 路径，不阻塞推进。
+
+如果一组 P0 全部缺标签 → 全部进 advisory → reviewer 判定从 `p0` 翻转为 `approved`，阶段直接收敛。
 
 ## 死循环识别（成本控制）
 

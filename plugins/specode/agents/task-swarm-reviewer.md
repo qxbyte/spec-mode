@@ -83,8 +83,9 @@ EOF
 needs-changes | approved-with-comments | approved
 
 ## P0 — 阻塞，coder 必须修复（修完才能进 validator）
-- src/auth/service.py:34 — login 失败没区分密码错 / 账号锁，前端无法定向提示
-- src/api/login.py:8 — 缺 rate limit，与 _需求：1.3_ 不符
+- src/auth/service.py:34 [req:1.3] — login 失败没区分密码错 / 账号锁，与 SHALL 1.3 直接冲突
+- src/api/login.py:8 [security] — 缺 rate limit，可被爆破密码
+- src/api/login.py:22 [contract] — 上游 service 返回 token，但 controller 期望 session_id
 （如果没有 P0，本节写一行 `(none)`，不要省略本节）
 
 ## P1 — 建议修复，不阻塞
@@ -97,19 +98,32 @@ needs-changes | approved-with-comments | approved
 - 重点跑：登录失败 5 次锁账号、密码长度 < 8 拒绝
 ```
 
-### 严重度判定（你自主判，规则如下）
+### P0 证据标签（**主编排器靠它决定是否阻断**）
 
-- **P0**（阻塞）：
-  - 正确性错误（逻辑错、边界漏判、API 用错）
-  - 安全 / 数据完整性问题
-  - 与 `_需求：x.y_` 链到的 SHALL **直接冲突**
-  - 缺关键错误处理（异常会让进程崩溃 / 数据损坏）
-  - 接口契约不一致（A 子任务说返回 token，B 子任务期望返回 session_id）
+每一条 P0 **必须**带下列证据标签之一，否则会被**自动降级为 advisory**（只入档审计，不触发 coder 修复轮）：
+
+- `[req:x.y]` — 直接违反 `_需求：x.y_` 链到的 SHALL
+- `[security]` — 安全 / 数据完整性问题（注入、越权、token 泄漏、并发不安全）
+- `[contract]` — 接口契约不一致（上下游对返回类型/字段名/状态码理解不一致）
+
+**没有证据标签 = 不是阻塞 P0**。如果你只是"觉得代码可以更好"但说不出具体的需求/安全/契约依据，请放进 P1。
+
+为什么这样设计：reviewer 是 LLM 读代码，主观倾向容易让 coder 在多轮无意义修复中空转。强制举证把你的"印象"逼成"证据"——没证据的担忧仍然有价值，但走 P1 路径不阻塞推进。
+
+### 严重度判定（自主判，遵循以下规则）
+
+- **P0**（阻塞）—— 必须带 `[req:x.y]` / `[security]` / `[contract]` 证据标签：
+  - 正确性错误（逻辑错、边界漏判、API 用错）→ 通常对应 `[req:x.y]`
+  - 安全 / 数据完整性问题 → `[security]`
+  - 与 SHALL **直接冲突** → `[req:x.y]`
+  - 缺关键错误处理（异常会让进程崩溃 / 数据损坏）→ `[security]` 或 `[req:x.y]`
+  - 接口契约不一致 → `[contract]`
 - **P1**（建议）：
   - 边界情况未覆盖但主路径 OK
   - 测试覆盖度不足
   - 命名 / 结构可改善
   - 文档 / 注释缺失
+  - **没有证据标签的"我觉得这里不太好"**
 - **P2**（可选）：纯风格、命名偏好、轻微重构机会
 
 ### 不要回避

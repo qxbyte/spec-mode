@@ -94,8 +94,23 @@ def build_initial_state(
     plan: dict,
     parallel: int = 3,
     max_rounds: int = 3,
+    reviewer_max_rounds: int | None = None,
+    validator_max_rounds: int | None = None,
     session_id: str = "",
 ) -> dict:
+    """Build the initial state.json structure.
+
+    Rounds policy: reviewer and validator loops are counted independently.
+    By default reviewer loops are tight (1 round) since reviewer P0 is a
+    subjective signal — repeated 'I think this could be better' bounces
+    waste budget. Validator fails are objective (test ran, test failed)
+    so they get the full 3 rounds.
+
+    If `reviewer_max_rounds` / `validator_max_rounds` are None, both fall
+    back to `max_rounds` for backward compatibility.
+    """
+    rev_max = reviewer_max_rounds if reviewer_max_rounds is not None else max_rounds
+    val_max = validator_max_rounds if validator_max_rounds is not None else max_rounds
     stages = []
     for s in plan["stages"]:
         stages.append({
@@ -130,12 +145,32 @@ def build_initial_state(
         "spec_dir": str(spec_dir),
         "project_root": str(project_root),
         "session_id": session_id,
-        "config": {"parallel": int(parallel), "max_rounds": int(max_rounds)},
+        "config": {
+            "parallel": int(parallel),
+            "max_rounds": int(max_rounds),
+            "reviewer_max_rounds": int(rev_max),
+            "validator_max_rounds": int(val_max),
+        },
         "stages": stages,
         "warnings": list(plan.get("warnings") or []),
         "started_at": _now(),
         "updated_at": _now(),
     }
+
+
+def _role_max_rounds(state: dict, role: str) -> int:
+    """Return the cap for the given role, with legacy fallback to max_rounds."""
+    cfg = state["config"]
+    if role == "reviewer":
+        return int(cfg.get("reviewer_max_rounds") or cfg.get("max_rounds", 3))
+    if role == "validator":
+        return int(cfg.get("validator_max_rounds") or cfg.get("max_rounds", 3))
+    # Coder rounds are bounded by whichever upstream loop triggered them;
+    # use the larger of the two role caps so coder isn't the bottleneck.
+    return max(
+        int(cfg.get("reviewer_max_rounds") or cfg.get("max_rounds", 3)),
+        int(cfg.get("validator_max_rounds") or cfg.get("max_rounds", 3)),
+    )
 
 
 # ---------- state queries ----------
@@ -259,7 +294,8 @@ def _next_role_for_stage(state: dict, stage: dict) -> dict | None:
     Returns None if the stage is in a state that needs no fork (e.g., it's
     actually done and pending writeback — caller checks that separately).
     """
-    max_rounds = state["config"]["max_rounds"]
+    rev_max = _role_max_rounds(state, "reviewer")
+    val_max = _role_max_rounds(state, "validator")
     last = stage.get("last")
     kind = stage["kind"]
 
@@ -303,7 +339,7 @@ def _next_role_for_stage(state: dict, stage: dict) -> dict | None:
             # via that checkpoint stage. The stage itself converges here.
             return None
         if judgment == "p0":
-            if round_no >= max_rounds:
+            if round_no >= rev_max:
                 return None  # caller marks failed
             return {"role": "coder", "round": round_no + 1, "scope": "p0-fix"}
         # loop / schema-error / other → caller decides terminal state
@@ -314,7 +350,7 @@ def _next_role_for_stage(state: dict, stage: dict) -> dict | None:
         if judgment == "pass":
             return None  # caller marks converged
         if judgment == "fail":
-            if round_no >= max_rounds:
+            if round_no >= val_max:
                 return None
             # fork coder fix; next reviewer-quick-check then re-validate
             return {"role": "coder", "round": round_no + 1, "scope": "validator-fail-fix"}
@@ -368,7 +404,8 @@ def advance(state: dict, stage_num: int, role: str, round_no: int, judgment: str
     stage["in_flight"] = None
 
     # Terminal-state inference
-    max_rounds = state["config"]["max_rounds"]
+    rev_max = _role_max_rounds(state, "reviewer")
+    val_max = _role_max_rounds(state, "validator")
     kind = stage["kind"]
 
     if role == "coder" and judgment in {"failed", "blocked"}:
@@ -397,9 +434,9 @@ def advance(state: dict, stage_num: int, role: str, round_no: int, judgment: str
             # way — the checkpoint is a different stage that runs independently.
             stage["phase"] = "converged"
             return stage
-        if judgment == "p0" and round_no >= max_rounds:
+        if judgment == "p0" and round_no >= rev_max:
             stage["phase"] = "failed"
-            stage["fail_reason"] = f"reviewer P0 after {round_no} rounds"
+            stage["fail_reason"] = f"reviewer P0 after {round_no} rounds (cap={rev_max})"
             return stage
 
     if role == "validator":
@@ -410,9 +447,9 @@ def advance(state: dict, stage_num: int, role: str, round_no: int, judgment: str
         if judgment == "pass":
             stage["phase"] = "converged"
             return stage
-        if judgment == "fail" and round_no >= max_rounds:
+        if judgment == "fail" and round_no >= val_max:
             stage["phase"] = "failed"
-            stage["fail_reason"] = f"validator FAIL after {round_no} rounds"
+            stage["fail_reason"] = f"validator FAIL after {round_no} rounds (cap={val_max})"
             return stage
 
     # coder ok / p0 within budget / fail within budget — stay running
