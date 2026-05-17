@@ -1,4 +1,4 @@
-# Task-Swarm Mode（多角色 agent 并发执行）
+# Task-Swarm 设计规约（CLI 编排 + 多角色 agent 物理隔离）
 
 specode "任务执行" selector 的第三个选项 `用 task-swarm 多 agent 并发`。
 
