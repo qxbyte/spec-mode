@@ -2,7 +2,7 @@
 
 ## Runtime is stdlib-only
 
-The runtime code under `plugins/spec-mode/scripts/` MUST use only the
+The runtime code under `plugins/specode/scripts/` MUST use only the
 Python standard library. This is a hard rule, declared in `plugin.json`:
 
 ```json
@@ -21,14 +21,14 @@ Tests under `tests/` MAY use `pytest` (it's a dev dependency, not runtime).
 Run the suite from the repo root:
 
 ```sh
-python3 -m pytest plugins/spec-mode/tests/ -v
+python3 -m pytest plugins/specode/tests/ -v
 ```
 
 When adding behavior to `spec_sync.py` or `spec_guard.py`, add:
 
-1. A unit test under `plugins/spec-mode/tests/test_spec_sync.py` for the
+1. A unit test under `plugins/specode/tests/test_spec_sync.py` for the
    pure function.
-2. An integration test under `plugins/spec-mode/tests/test_spec_guard.py`
+2. An integration test under `plugins/specode/tests/test_spec_guard.py`
    exercising the handler path with a fabricated stdin payload through
    `hook_caller`.
 
@@ -43,7 +43,7 @@ Every handler in `spec_guard.py` MUST:
 1. Catch all exceptions internally and return 0 from `main()` (the dispatcher
    already wraps handler calls in try/except). Never wedge a user's Claude
    Code session because of a plugin bug.
-2. Honor `SPEC_MODE_GUARD=off` for global bypass.
+2. Honor `SPECODE_GUARD=off` for global bypass.
 3. Audit log via `_audit()` for any decision that *did work* — silent fast-
    exits when no active spec are deliberately *not* audited (avoid log spam).
 4. Use `deny(msg)` (exit 2 + stderr) ONLY for genuine invariant violations
@@ -63,7 +63,7 @@ regression.
 
 ## Sentinel discipline
 
-`~/.spec-mode/.any-active` is the shell-short-circuit sentinel. Maintain
+`~/.specode/.any-active` is the shell-short-circuit sentinel. Maintain
 its truth via `spec_state.sync_any_active_sentinel()` — never write it
 ad-hoc. If you add a code path that activates or deactivates a spec, call
 sync after.
@@ -74,7 +74,7 @@ Two non-obvious design calls are encoded in the rules:
 
 - **1A**: freeform mode relaxes INV-1 (file-not-in-tasks check) but does
   NOT exempt INV-2 (turn conservation) or INV-6 (phase gate). Freeform is
-  an INV-1 escape hatch, not a full spec-mode bypass.
+  an INV-1 escape hatch, not a full specode bypass.
 - **2A**: `implementation-log.md` counts as a doc change for INV-2.
   Cosmetic-doc abuse (one space added to design.md to satisfy INV-2) is
   caught by `spec_lint.py` as a WARNING, not by hook denial.

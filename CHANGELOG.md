@@ -1,5 +1,39 @@
 # Changelog
 
+## Unreleased — task-swarm mode
+
+### Added
+
+- **Task-Swarm Mode**: a third option in the "任务执行" selector that delegates
+  task execution to specialized subagents (`task-swarm-coder`, `-reviewer`,
+  `-validator`, `-planner`) shipped as part of this plugin.
+- Reviewer and validator subagents are spawned with **no Edit/Write tools** —
+  enforces anti-self-approval at the tool layer (not just prompt-level).
+- Stage-aggregated dispatch: one coder per top-level tasks.md stage (covering
+  all its leaf subtasks), one reviewer per stage, validator reuses the built-in
+  "检查点" tasks. Cuts subagent count from naive `N×3` to roughly `N` for a
+  spec with `N` stages.
+- New command `/task-swarm <spec-dir>/tasks.md` for manual triggering.
+- New references: `task-swarm.md` (protocol) and `task-swarm-example.md`
+  (sample tasks.md showing the format).
+- New `agents/` directory under the plugin — Claude Code auto-registers these
+  subagents on install.
+- **Convergence loop per stage**: each stage runs `coder → reviewer → validator`
+  in a loop. Reviewer must classify findings as P0 (blocking) / P1 / P2; any P0
+  triggers a focused coder fix round + re-review. Validator fail triggers another
+  coder fix round + mandatory re-review + re-validate. Default `--max-rounds 3`
+  per loop; reviewer/validator self-report "same finding as previous round" to
+  short-circuit infinite loops. tasks.md `[x]` is only written when both loops
+  converge cleanly; intermediate rounds only append `> 第 N 轮…` progress notes
+  under the affected subtask.
+
+### Changed
+
+- `references/prompts.md` task execution selector now lists 4 options
+  (added `用 task-swarm 多 agent 并发` before `暂不 coding`).
+- `references/workflow.md` §7.1 documents the task-swarm delegation flow.
+- `SKILL.md` References section adds links to the two new docs.
+
 ## 0.1.0 (2026-05-15)
 
 ### Phase 1 — bootstrap
@@ -9,19 +43,19 @@
 - `hooks/hooks.json` wiring SessionStart / UserPromptSubmit / PreToolUse /
   PostToolUse / Stop / SessionEnd → `scripts/spec_guard.py`.
 - `scripts/spec_guard.py`: dispatch entry, audit-log every event, all
-  handlers return ok. Supports `SPEC_MODE_GUARD=off` global bypass.
+  handlers return ok. Supports `SPECODE_GUARD=off` global bypass.
 
 ### Phase 2 — state layer + injection + short-circuit
 
 - `scripts/spec_state.py`: read-only probe against existing
-  `.active-spec-mode.json` / per-spec `.config.json`. Owns
-  `~/.spec-mode/{sessions,.any-active}`. CLI: status / sync-sentinel /
+  `.active-specode.json` / per-spec `.config.json`. Owns
+  `~/.specode/{sessions,.any-active}`. CLI: status / sync-sentinel /
   demo-activate / demo-deactivate.
 - `spec_guard.py`: SessionStart writes Claude-session record;
   UserPromptSubmit injects a status block via
   `hookSpecificOutput.additionalContext` when a spec is active; other
   handlers fast-exit when no active spec.
-- `hooks/hooks.json`: shell short-circuit on `$HOME/.spec-mode/.any-active`
+- `hooks/hooks.json`: shell short-circuit on `$HOME/.specode/.any-active`
   for the non-session hooks so Python doesn't even start when idle.
 
 ### Phase 3 — Code-Doc Sync Guard (CDSG)

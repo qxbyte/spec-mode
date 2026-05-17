@@ -1,6 +1,6 @@
 <p align="right"><strong>English</strong> | <a href="./README.zh-CN.md">中文</a></p>
 
-# spec-mode
+# specode
 
 Specification-driven workflow plugin for **Claude Code** and **CodeBuddy**.
 
@@ -27,12 +27,13 @@ INV-1 and INV-2 form the **Code-Doc Sync Guard (CDSG)**.
 
 ```
 .claude-plugin/marketplace.json   ← single-plugin marketplace manifest
-plugins/spec-mode/
+plugins/specode/
   .claude-plugin/plugin.json      ← plugin manifest
   hooks/hooks.json                ← 6 event handlers with shell short-circuit on sentinel
   hooks/hooks-probe.json          ← diagnostic probe (swap in for re-verification)
-  skills/spec-mode/               ← skill content (SKILL.md + references)
-  commands/                       ← /spec, /continue, /status, /end
+  skills/specode/               ← skill content (SKILL.md + references)
+  commands/                       ← /spec, /continue, /status, /end, /task-swarm
+  agents/                         ← task-swarm-{coder,reviewer,validator,planner}
   scripts/
     spec_guard.py                 ← hook entry; dispatches to handlers; audit log
     spec_state.py                 ← read-only state probe + sentinel + Claude-session record
@@ -48,23 +49,23 @@ plugins/spec-mode/
 
 ```sh
 # Claude Code
-claude plugin marketplace add https://github.com/qxbyte/spec-mode
-claude plugin install spec-mode@spec-mode
+claude plugin marketplace add https://github.com/qxbyte/specode
+claude plugin install specode@specode
 
 # CodeBuddy (verified on 2.97.1)
-codebuddy plugin marketplace add https://github.com/qxbyte/spec-mode
-codebuddy plugin install spec-mode@spec-mode
+codebuddy plugin marketplace add https://github.com/qxbyte/specode
+codebuddy plugin install specode@specode
 ```
 
 Both harnesses clone the marketplace, locate the plugin under
-`plugins/spec-mode/`, and auto-load `hooks/`, `skills/`, `commands/`.
-Updates land via `claude plugin update spec-mode` or `claude plugin
-marketplace update spec-mode`.
+`plugins/specode/`, and auto-load `hooks/`, `skills/`, `commands/`.
+Updates land via `claude plugin update specode` or `claude plugin
+marketplace update specode`.
 
 ### One-shot session (Claude Code only)
 
 ```sh
-claude --plugin-url https://github.com/qxbyte/spec-mode/archive/refs/heads/main.zip
+claude --plugin-url https://github.com/qxbyte/specode/archive/refs/heads/main.zip
 ```
 
 Loads the plugin for the current session only; nothing persists.
@@ -72,38 +73,65 @@ Loads the plugin for the current session only; nothing persists.
 ### Local development
 
 ```sh
-git clone https://github.com/qxbyte/spec-mode.git
-claude    --plugin-dir ./spec-mode/plugins/spec-mode
-codebuddy --plugin-dir ./spec-mode/plugins/spec-mode
+git clone https://github.com/qxbyte/specode.git
+claude    --plugin-dir ./specode/plugins/specode
+codebuddy --plugin-dir ./specode/plugins/specode
 ```
 
 Once loaded:
 
 ```
-/help                              # list /spec-mode:* commands
+/help                              # list /specode:* commands
 /reload-plugins                    # after editing plugin files
 ```
 
-Hook activity logs to `~/.spec-mode/audit/<date>.log` (UTC).
+Hook activity logs to `~/.specode/audit/<date>.log` (UTC).
+
+## Task-Swarm Mode (multi-agent acceleration)
+
+After tasks are confirmed, the "task execution" selector offers a third option
+`用 task-swarm 多 agent 并发`. Selecting it delegates execution to **task-swarm**:
+the specode session stays as orchestrator (lock, ledger, tasks.md writes),
+but actual coding is fanned out to dedicated subagents — one **coder**
+subagent per top-level stage, one **reviewer** subagent per stage, and the
+existing "检查点" tasks become **validator** subagents.
+
+Reviewer and validator subagents are spawned **without Edit/Write tools** —
+they physically cannot modify code. This is the anti-self-approval guarantee:
+the agent that wrote the code is never the agent that reviews or accepts it.
+
+For a spec with 5 stages, 20 leaf tasks, and 5 checkpoint tasks, this dispatches
+**15 subagents** rather than the naive 60 (1:3 expansion) — and that's just for the
+**initial pass**. Each stage runs a `coder → reviewer → validator` loop with up to
+3 rounds: reviewer P0 findings trigger a focused coder fix round (no scope creep,
+only the listed P0s), then re-review; validator fail triggers another coder fix
+round + re-review + re-validate. A stage's `[x]` is only written when reviewer
+shows 0 P0s **and** validator passes. Default `--max-rounds 3`; reviewer and
+validator each detect "same P0 / same failure as last round" to short-circuit
+infinite loops.
+
+→ Protocol: `plugins/specode/skills/specode/references/task-swarm.md`
+→ Example tasks.md: `plugins/specode/skills/specode/references/task-swarm-example.md`
+→ Manual entry: `/task-swarm <spec-dir>/tasks.md`
 
 ## Usage
 
 Inside a Claude Code session with the plugin loaded:
 
 ```
-/spec-mode:spec --persist <requirement>     # start persistent spec session
-/spec-mode:continue [slug]                  # resume / switch
-/spec-mode:status                           # show current session
-/spec-mode:end                              # end persistent session
+/specode:spec --persist <requirement>     # start persistent spec session
+/specode:continue [slug]                  # resume / switch
+/specode:status                           # show current session
+/specode:end                              # end persistent session
 
-/spec-mode:spec --freeform                  # relax INV-1 (INV-2 still enforced)
-/spec-mode:spec --strict                    # restore INV-1
-/spec-mode:spec --sync-status               # ledger / pending sync / last violation
+/specode:spec --freeform                  # relax INV-1 (INV-2 still enforced)
+/specode:spec --strict                    # restore INV-1
+/specode:spec --sync-status               # ledger / pending sync / last violation
 ```
 
 Once a spec is active:
 
-- Every user prompt is augmented with a `spec-mode active` status block
+- Every user prompt is augmented with a `specode active` status block
   identifying the spec, phase, lock state, turn id, and freeform mode.
 - Edits to project source files outside `tasks.md` are blocked unless a
   same-turn doc change preceded them (INV-1).
@@ -128,10 +156,10 @@ or that don't reference any actual code file (the *cosmetic-doc* concern).
 | Hook | Wall-clock budget |
 |---|---|
 | `SessionStart` / `SessionEnd` | always runs Python; <500ms |
-| `UserPromptSubmit` | only runs Python when `~/.spec-mode/.any-active` sentinel exists; <80ms |
+| `UserPromptSubmit` | only runs Python when `~/.specode/.any-active` sentinel exists; <80ms |
 | `PreToolUse` / `PostToolUse` / `Stop` | same shell short-circuit; <100ms when running |
 
-When no spec is active, the shell `[ ! -e ~/.spec-mode/.any-active ]` check
+When no spec is active, the shell `[ ! -e ~/.specode/.any-active ]` check
 exits before any Python startup → effectively free.
 
 ## CodeBuddy support
