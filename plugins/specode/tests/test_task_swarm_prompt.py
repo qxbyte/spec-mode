@@ -60,11 +60,12 @@ def test_render_coder_initial_includes_writes_and_inbox():
 
 def test_render_coder_fix_round_includes_guardrail():
     with tempfile.TemporaryDirectory() as td:
-        ctx = _ctx(Path(td), round_no=2, scope="p0-fix")
+        # R3: reviewer no longer drives fix rounds; only validator-fail-fix.
+        ctx = _ctx(Path(td), round_no=2, scope="validator-fail-fix")
         text = PR.render_coder_prompt(ctx)
         assert "修复轮硬规则" in text
-        assert "P0" in text
-        assert "P1/P2 不在本轮职责内" in text
+        assert "validation.md" in text
+        assert "不要顺手优化" in text
 
 
 def test_render_reviewer_no_edit_tools_warning():
@@ -75,11 +76,14 @@ def test_render_reviewer_no_edit_tools_warning():
         assert "## P0" in text
 
 
-def test_render_reviewer_post_fix_block():
+def test_render_reviewer_is_advisory():
+    """R3: reviewer prompt must declare advisory mode + non-blocking role."""
     with tempfile.TemporaryDirectory() as td:
-        ctx = _ctx(Path(td), round_no=2, scope="post-fix")
+        ctx = _ctx(Path(td))
         text = PR.render_reviewer_prompt(ctx)
-        assert "post-fix" in text or "post-fix 复审" in text
+        assert "advisory" in text
+        assert "不参与" in text or "不阻塞" in text
+        assert "tasks.md" in text  # explains where the report ends up
 
 
 def test_render_validator_checkpoint_marker():

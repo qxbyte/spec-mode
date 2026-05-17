@@ -60,6 +60,10 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/task_swarm.py advance \
   --judgment <parse.judgment>
 ```
 
+**schema-error 重派**：若 `parse.retry == true`（judgment=schema-error），**不要** advance。
+脚本已自动清空 outbox 与 in_flight。把 `parse.outbox_snapshot` 字典里的内容拼到下一次 fork 的 prompt
+里（告诉 subagent 上次为何被拒），然后直接回到 2.1 调 `next`——会拿到对同一 stage/role/round 的 fork 指令。
+
 **`action == "writeback"`**：
 
 ```bash

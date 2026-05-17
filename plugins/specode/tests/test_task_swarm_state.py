@@ -112,51 +112,40 @@ SINGLE_STAGE = """\
 """
 
 
-def test_p0_loop_then_approve():
-    state = make_state(SINGLE_STAGE, max_rounds=3)
-    # round 1 coder → reviewer P0
+# R3: reviewer is now advisory — it never fails a stage or loops back to coder.
+
+def test_reviewer_p0_is_advisory_stage_converges():
+    """Even when reviewer reports P0, the stage converges; advisory annotation
+    is the only side effect. No coder fix round is scheduled."""
+    state = make_state(SINGLE_STAGE)
     S.mark_in_flight(state, 1, "coder", 1)
     S.advance(state, 1, "coder", 1, "ok")
     S.mark_in_flight(state, 1, "reviewer", 1)
     S.advance(state, 1, "reviewer", 1, "p0", extra={"p0_count": 3})
 
-    a = S.next_action(state)
-    assert a.kind == "fork"
-    assert (a.payload["role"], a.payload["round"]) == ("coder", 2)
-    assert a.payload["scope"] == "p0-fix"
-
-    S.mark_in_flight(state, 1, "coder", 2)
-    S.advance(state, 1, "coder", 2, "ok")
-    a = S.next_action(state)
-    assert (a.payload["role"], a.payload["round"]) == ("reviewer", 2)
-
-    S.mark_in_flight(state, 1, "reviewer", 2)
-    S.advance(state, 1, "reviewer", 2, "approved")
-
     stage = S.get_stage(state, 1)
     assert stage["phase"] == "converged"
-    assert stage["rounds"]["reviewer"] == 2
+    # And the next action is writeback (not another fork)
+    a = S.next_action(state)
+    assert a.kind == "writeback"
 
 
-def test_p0_max_rounds_terminates():
-    state = make_state(SINGLE_STAGE, max_rounds=2)
+def test_reviewer_approved_converges_normal_stage():
+    state = make_state(SINGLE_STAGE)
     S.advance(state, 1, "coder", 1, "ok")
-    S.advance(state, 1, "reviewer", 1, "p0")
-    S.advance(state, 1, "coder", 2, "ok")
-    S.advance(state, 1, "reviewer", 2, "p0")  # round 2 == max → fail
-
-    stage = S.get_stage(state, 1)
-    assert stage["phase"] == "failed"
-    assert "P0 after 2 rounds" in stage["fail_reason"]
+    a = S.next_action(state)
+    assert (a.payload["role"], a.payload["round"]) == ("reviewer", 1)
+    S.advance(state, 1, "reviewer", 1, "approved")
+    assert S.get_stage(state, 1)["phase"] == "converged"
 
 
-def test_reviewer_loop_warning_terminates():
+def test_reviewer_loop_does_not_fail_stage():
+    """A reviewer loop verdict no longer fails the stage — advisory only."""
     state = make_state(SINGLE_STAGE)
     S.advance(state, 1, "coder", 1, "ok")
     S.advance(state, 1, "reviewer", 1, "loop")
     stage = S.get_stage(state, 1)
-    assert stage["phase"] == "failed"
-    assert "reviewer loop" in stage["fail_reason"]
+    assert stage["phase"] == "converged"
 
 
 # ---------- scenario 3: validator fail loop ----------
@@ -187,25 +176,19 @@ def test_validator_max_rounds():
 
 
 def test_validator_recovers_within_budget():
+    """R2: checkpoint must converge on validator pass, not reviewer.
+    coder-fix → validator re-run (no reviewer post-fix in between).
+    """
     state = make_state(CHECKPOINT_ONLY, max_rounds=3)
     S.advance(state, 1, "validator", 1, "fail")
     a = S.next_action(state)
     assert (a.payload["role"], a.payload["round"], a.payload["scope"]) == ("coder", 2, "validator-fail-fix")
     S.advance(state, 1, "coder", 2, "ok")
-    # checkpoint coder fix → reviewer post-fix check
+    # checkpoint coder fix → validator re-run directly (no reviewer)
     a = S.next_action(state)
-    assert (a.payload["role"], a.payload["round"]) == ("reviewer", 2)
-    assert a.payload["scope"] == "post-fix"
-    S.advance(state, 1, "reviewer", 2, "approved")
-    # reviewer approve doesn't converge a checkpoint — validator must re-run
-    # Actually current advance() marks converged on reviewer approve. For
-    # checkpoint stage that's wrong — we model checkpoint pass via validator.
-    # Adjust expectation: in our state machine, the reviewer "post-fix" call
-    # IS a no-op gate; if approved we move to validator round 2.
-    # NOTE: implementation marks converged on reviewer approve regardless of kind.
-    # That's intentional simplification (the next checkpoint stage handles
-    # validation in two-stage flows). For checkpoint-only stage this means
-    # we converge here. The test reflects that.
+    assert a.payload["role"] == "validator"
+    assert a.payload["scope"] == "re-run"
+    S.advance(state, 1, "validator", a.payload["round"], "pass")
     stage = S.get_stage(state, 1)
     assert stage["phase"] == "converged"
 
@@ -312,70 +295,40 @@ def test_state_is_json_serializable():
     json.dumps(state)
 
 
-# ---------- D: independent reviewer / validator rounds ----------
+# ---------- R3: reviewer is advisory; only validator_rounds matters ----------
 
-def test_reviewer_rounds_1_terminates_after_first_p0():
-    """With reviewer_rounds=1, a single P0 round → failed (no fix loop)."""
-    state = make_state(SINGLE_STAGE, reviewer_rounds=1, validator_rounds=3)
-    S.advance(state, 1, "coder", 1, "ok")
-    S.advance(state, 1, "reviewer", 1, "p0")
+def test_validator_rounds_cap_terminates_checkpoint():
+    """validator fail at cap → failed (advisory reviewer no longer involved)."""
+    state = make_state(CHECKPOINT_ONLY, validator_rounds=2)
+    S.advance(state, 1, "validator", 1, "fail")
+    S.advance(state, 1, "coder", 2, "ok")
+    S.advance(state, 1, "validator", 2, "fail")
     stage = S.get_stage(state, 1)
     assert stage["phase"] == "failed"
-    assert "cap=1" in stage["fail_reason"]
+    assert "validator FAIL" in stage["fail_reason"]
 
 
-def test_reviewer_rounds_2_allows_one_fix_loop():
-    state = make_state(SINGLE_STAGE, reviewer_rounds=2, validator_rounds=3)
-    S.advance(state, 1, "coder", 1, "ok")
-    S.advance(state, 1, "reviewer", 1, "p0")
-    # Round 1 P0 within budget → next action is coder r2
-    a = S.next_action(state)
-    assert (a.payload["role"], a.payload["round"]) == ("coder", 2)
-    S.advance(state, 1, "coder", 2, "ok")
-    S.advance(state, 1, "reviewer", 2, "p0")  # 2 == reviewer_rounds → failed
-    assert S.get_stage(state, 1)["phase"] == "failed"
-
-
-def test_validator_rounds_independent_from_reviewer():
-    """validator_rounds=3 still works even when reviewer_rounds=1."""
-    state = make_state(CHECKPOINT_ONLY, reviewer_rounds=1, validator_rounds=3)
-    S.advance(state, 1, "validator", 1, "fail")
-    a = S.next_action(state)
-    assert (a.payload["role"], a.payload["round"]) == ("coder", 2)
-    S.advance(state, 1, "coder", 2, "ok")
-    # post-fix reviewer; reviewer cap=1 but this is the post-fix path
-    # at round 2 which the state machine treats as the same round number.
-    # Per advance rules, reviewer round 2 with reviewer_rounds=1 cap → failed.
-    # That's intentional — the post-fix reviewer is bounded by reviewer cap.
-    # validator pipeline should NOT keep going past reviewer cap.
-    # Verify:
-    a = S.next_action(state)
-    assert a.payload["role"] == "reviewer"
-    assert a.payload["round"] == 2
-    # Approving post-fix reviewer → continues to validator r2
-    S.advance(state, 1, "reviewer", 2, "approved")
-    stage = S.get_stage(state, 1)
-    # Approve converges checkpoint stage in current impl — that's consistent
-    # with the validator-fail-fix recovery test elsewhere.
-    assert stage["phase"] == "converged"
-
-
-def test_max_rounds_fallback_when_independent_caps_unspecified():
-    """When only --max-rounds is given, both reviewer/validator use it."""
+def test_max_rounds_fallback_when_validator_cap_unspecified():
+    """When only --max-rounds is given, validator uses it."""
     state = make_state(SINGLE_STAGE, max_rounds=2)
     cfg = state["config"]
-    assert cfg["reviewer_max_rounds"] == 2
     assert cfg["validator_max_rounds"] == 2
 
 
-def test_legacy_state_without_independent_caps_falls_back():
-    """A state.json missing reviewer_max_rounds field → use max_rounds."""
-    state = make_state(SINGLE_STAGE, max_rounds=3)
-    # Simulate legacy state by deleting the independent caps
-    del state["config"]["reviewer_max_rounds"]
+def test_legacy_state_without_caps_falls_back():
+    """state.json missing validator_max_rounds (legacy) falls back to max_rounds."""
+    state = make_state(CHECKPOINT_ONLY, max_rounds=3)
     del state["config"]["validator_max_rounds"]
-    # advance with reviewer p0 round 1, expect coder fix scheduled (within cap=3)
-    S.advance(state, 1, "coder", 1, "ok")
-    S.advance(state, 1, "reviewer", 1, "p0")
+    state["config"].pop("reviewer_max_rounds", None)
+    S.advance(state, 1, "validator", 1, "fail")
     a = S.next_action(state)
     assert (a.payload["role"], a.payload["round"]) == ("coder", 2)
+
+
+def test_reviewer_rounds_param_is_deprecated_no_op():
+    """Passing --reviewer-rounds doesn't gate anything anymore (R3)."""
+    state = make_state(SINGLE_STAGE, reviewer_rounds=1, validator_rounds=3)
+    S.advance(state, 1, "coder", 1, "ok")
+    # reviewer with any judgment still converges the stage
+    S.advance(state, 1, "reviewer", 1, "p0")
+    assert S.get_stage(state, 1)["phase"] == "converged"
