@@ -1,42 +1,105 @@
 ---
-description: 把 specode tasks.md 委派给 task-swarm 多角色 agent 并发执行（coder→reviewer→validator 循环到收敛；物理隔离防自我认可）
-argument-hint: "[<spec-dir>/tasks.md] [--parallel N] [--max-rounds N] [--dry-run]"
+description: 多角色 agent 并发执行 tasks.md（CLI 驱动调度协议；脚本管状态机，模型只负责派单与文本生成）
+argument-hint: "[<spec-dir>/tasks.md] [--parallel N] [--max-rounds N]"
 ---
 
-启动 task-swarm 编排器处理任务清单：`$ARGUMENTS`
+把 tasks.md 委派给 task-swarm 编排器：`$ARGUMENTS`
 
-## 执行规则
+## 协议（强制按顺序执行）
 
-1. **必须先读取 `references/task-swarm.md`** 获取完整编排步骤、subagent 协议、回写规则。
-2. **必须使用 Task 工具 fork 专用 subagent**：
-   - `subagent_type="specode:task-swarm-coder"` 给写代码任务
-   - `subagent_type="specode:task-swarm-reviewer"` 给评审任务
-   - `subagent_type="specode:task-swarm-validator"` 给验收 / 检查点任务
-   - `subagent_type="specode:task-swarm-planner"` 给拆分任务（一般不需要）
-   - **不要**用 `general-purpose`，那会让角色隔离失效
-3. **你是编排器，不是执行者** — 不要自己直接写代码、做评审、跑测试。所有具体任务必须 fork subagent。
-4. **按一级阶段聚合派发** — coder 一次拿一整阶段（多个子任务），reviewer 一次评一整阶段，validator 直接复用 specode 检查点任务。详见 task-swarm.md。
-5. **可并发的阶段必须并发派发** — 在同一个回复里发出多个 Task 工具调用。
-6. **每阶段完成立刻回写 tasks.md** — 走 `verify-lock` 三检守，然后 Edit tasks.md 改 checkbox。绝不在内存累积变更。
+你是 task-swarm 调度器。**不要尝试理解状态机** — 状态机在 `scripts/task_swarm.py` 里。你只执行以下循环。
 
-## 参数
+### 1. 初始化（只跑一次）
 
-- `$ARGUMENTS` 第一个位置参数：tasks.md 路径（缺省取当前 active spec 的 tasks.md）
-- `--parallel N` 限制最大并发阶段数（默认 3）
-- `--max-rounds N` 每阶段 reviewer / validator 循环各自的最大轮次（默认 3）。reviewer 提 P0 或 validator fail 时会回 coder 修复并复审/重验，直到收敛或达上限
-- `--dry-run` 只解析任务、打印阶段派发计划，不真派发 subagent
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/task_swarm.py init \
+  --tasks <tasks.md 绝对路径> \
+  [--parallel N] [--max-rounds N]
+```
 
-## 前提检查
+返回 JSON 含 `run_id`。**把 `run_id` 记住**——后续每个子命令都要传 `--run <run_id>`。
 
-执行前确认：
-1. spec session 当前持有 lock（`verify-lock` 返回 ok）
-2. plugin agents 已注册（specode plugin 安装时自动）
-3. 当前 phase 是 `tasks` 或 `implementation`
+如返回 `error` → 把错误原文呈现给用户后停止。
 
-任一不满足 → 不要 fork，告诉用户原因。
+### 2. 主循环
 
-## 缺省行为
+每一轮做四步，按 JSON 返回的 `action` 字段分支：
 
-- tasks.md 缺失/找不到 → 提示用户用 `/specode:task-swarm <path>` 或先走 `/spec` 流程生成 tasks.md
-- 解析失败（依赖成环 / 标签错误）→ 指出具体行号 + 错误，不要尝试 fork
-- session lock 丢失 → 立即停止，提示用户 `/continue <slug>` 重新接管
+#### 2.1 拿下一步指令
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/task_swarm.py next --run <run_id>
+```
+
+返回 `{"action": "fork|writeback|wait|done", ...}`。
+
+#### 2.2 按 action 执行
+
+**`action == "fork"`** — 派发 subagent：
+
+```
+Task(
+  description=<json.description>,
+  subagent_type=<json.subagent_type>,        ← 必须是 "specode:task-swarm-{coder|reviewer|validator}"
+  prompt=<cat json.prompt_file 的内容>          ← prompt 已由脚本预渲染好，不要改
+)
+```
+
+subagent 返回后**立刻**：
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/task_swarm.py parse \
+  --run <run_id> --stage <json.stage> --role <json.role> --round <json.round>
+```
+
+拿到 `{"judgment": "...", ...}`，再 advance：
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/task_swarm.py advance \
+  --run <run_id> --stage <json.stage> --role <json.role> --round <json.round> \
+  --judgment <parse.judgment>
+```
+
+**`action == "writeback"`**：
+
+```bash
+bash <json.cmd>     # 即: python3 ... task_swarm.py writeback --run <run_id> --stage N
+```
+
+脚本内部已处理 verify-lock + heartbeat + 行级安全 Edit。**不要**自己 Edit tasks.md。
+
+**`action == "wait"`**：当前并发已满或文件有冲突。等下一个 subagent 完成后再 `next`。
+
+**`action == "done"`**：把 `json.summary` 用人话呈现给用户，结束。
+
+#### 2.3 回到 2.1
+
+## 严禁
+
+- ❌ 不要自己读 tasks.md 决定派什么——`next` 会告诉你
+- ❌ 不要自己解析 review.md / validation.md——`parse` 会给你结构化判定
+- ❌ 不要自己 Edit tasks.md——hook 会拦下来（INV-9），用 `writeback` 子命令
+- ❌ 不要省略 `parse → advance` 这一对调用——否则 state.json 不前进，`next` 卡死
+- ❌ 不要用 `general-purpose` 作为 subagent_type——hook 会拦下来（INV-7）
+- ❌ 不要自行拼 subagent prompt——`next` 给的 `prompt_file` 已包含 @writes 边界、修复轮指引、检查点专用文案
+
+## 前提
+
+- 已有 active spec session 且持锁
+- plugin agents 已注册（specode plugin 安装时自动）
+- 当前 spec 阶段是 `tasks` 或 `implementation`
+
+任一不满足 → 不要 init，告诉用户原因。
+
+## 调试
+
+| 想看什么 | 命令 |
+|---|---|
+| run 当前状态 | `task_swarm.py status --run <id>` |
+| 某 subagent 的 prompt | `cat .task-swarm/runs/<id>/agents/<stage>/task.md` |
+| 某 subagent 的产出 | `cat .task-swarm/runs/<id>/agents/<stage>/outbox/*` |
+| 所有 run | `ls .task-swarm/runs/` |
+
+## 协议背后的设计
+
+参考 `references/task-swarm.md` —— 文档解释为什么状态机、解析、回写要全部下沉到脚本（防"自我认可"、防模型在长循环里数错轮号、防 outbox 格式漂移）。运行时**不需要**读那份文档，按上面循环走即可。

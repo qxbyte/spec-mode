@@ -23,6 +23,7 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import spec_state  # noqa: E402
 import spec_sync   # noqa: E402
+import task_swarm_guard  # noqa: E402
 
 
 AUDIT_DIR = Path(
@@ -135,6 +136,33 @@ def _edit_target(payload: dict) -> Optional[Path]:
     return Path(raw).expanduser()
 
 
+def _enclosing_subagent_workspace(target: Path, project_root: Path) -> Optional[Path]:
+    """If target lives inside a task-swarm agent workspace, return that ws path.
+
+    The convention is:
+      <project>/.task-swarm/runs/<RUN>/agents/stage-N-<role>[-rR]/{inbox,outbox,task.md,...}
+
+    Return the agent workspace (the directory containing task.md) if target
+    is inside it, else None.
+    """
+    try:
+        target_abs = target.resolve()
+        project_abs = project_root.resolve()
+    except OSError:
+        return None
+    try:
+        rel = target_abs.relative_to(project_abs)
+    except ValueError:
+        return None
+    parts = rel.parts
+    if len(parts) < 5:
+        return None
+    if parts[0] != ".task-swarm" or parts[1] != "runs" or parts[3] != "agents":
+        return None
+    ws = project_abs / parts[0] / parts[1] / parts[2] / parts[3] / parts[4]
+    return ws if ws.exists() else None
+
+
 # --- handlers ---------------------------------------------------------------
 
 def handle_session_start(payload: dict) -> int:
@@ -173,6 +201,11 @@ def handle_user_prompt_submit(payload: dict) -> int:
     block += f"\ntasks_files:   {len(tasks_files)} entries"
     block += f"\nturn:          {ledger['turn_id']}"
 
+    # Task-swarm run state, if a run is active in this project.
+    swarm_block = _render_task_swarm_block(project_root)
+    if swarm_block:
+        block += "\n" + swarm_block
+
     output = {
         "hookSpecificOutput": {
             "hookEventName": "UserPromptSubmit",
@@ -184,14 +217,70 @@ def handle_user_prompt_submit(payload: dict) -> int:
     return ok()
 
 
+def _render_task_swarm_block(project_root: Path) -> str:
+    """Return a multi-line status block for the active task-swarm run, or ''."""
+    run_dir = task_swarm_guard.find_active_run(project_root)
+    if run_dir is None:
+        return ""
+    state_path = run_dir / "state.json"
+    if not state_path.exists():
+        return ""
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except Exception:
+        return ""
+
+    summary_lines: list[str] = []
+    counts = {"pending": 0, "running": 0, "converged": 0, "failed": 0, "skipped": 0}
+    in_flight: list[str] = []
+    for s in state.get("stages") or []:
+        counts[s.get("phase", "pending")] = counts.get(s.get("phase", "pending"), 0) + 1
+        if s.get("in_flight"):
+            ifl = s["in_flight"]
+            in_flight.append(f"stage {s['num']} {ifl['role']} r{ifl['round']}")
+    next_hint = (
+        f"python3 ${{CLAUDE_PLUGIN_ROOT}}/scripts/task_swarm.py next --run {state['run_id']}"
+    )
+    summary_lines.append("--- task-swarm ---")
+    summary_lines.append(f"run:           {state['run_id']}")
+    summary_lines.append(
+        f"stages:        ✔{counts['converged']} ▶{counts['running']} ○{counts['pending']}"
+        f" ✗{counts['failed']} —{counts['skipped']}"
+    )
+    summary_lines.append(
+        f"max_rounds:    {state['config']['max_rounds']}  parallel: {state['config']['parallel']}"
+    )
+    if in_flight:
+        summary_lines.append("in-flight:     " + "; ".join(in_flight))
+    summary_lines.append(f"next:          {next_hint}")
+    summary_lines.append("------------------")
+    return "\n".join(summary_lines)
+
+
 def handle_pre_tool_use(payload: dict) -> int:
     info = spec_state.find_active_spec(prefer_session_id=_prefer_session_id())
     if info is None:
         spec_state.sync_any_active_sentinel()
+        # Even without an active spec, INV-7 (Task subagent_type) may still
+        # apply if a task-swarm run is active locally. Fall through.
+        target = None
+    else:
+        target = _edit_target(payload)
+
+    # ---- INV-7: Task tool subagent_type prefix ----
+    tool_name = (payload.get("tool_name") or "").strip()
+    if tool_name == "Task":
+        project_root_for_swarm = Path(payload.get("cwd") or os.getcwd()).expanduser()
+        if task_swarm_guard.is_task_swarm_active(project_root_for_swarm):
+            subagent_type = (payload.get("tool_input") or {}).get("subagent_type") or ""
+            decision, msg = task_swarm_guard.check_inv7_subagent_type(subagent_type)
+            if decision == "deny":
+                _audit("PreToolUse", payload, "deny-INV-7", subagent_type)
+                return deny(msg)
+            _audit("PreToolUse", payload, "ok-INV-7", subagent_type)
         return ok()
 
-    target = _edit_target(payload)
-    if target is None:
+    if info is None or target is None:
         _audit("PreToolUse", payload, "ok-no-target", "")
         return ok()
 
@@ -201,6 +290,49 @@ def handle_pre_tool_use(payload: dict) -> int:
     current_phase = info.get("current_phase") or "unknown"
     session_id = info.get("session_id") or _prefer_session_id()
     slug = info.get("spec_slug") or spec_dir.name
+
+    # ---- INV-8: subagent @writes boundary ----
+    subagent_ws = _enclosing_subagent_workspace(target, project_root)
+    if subagent_ws is not None and task_swarm_guard.is_task_swarm_active(project_root):
+        decision, msg = task_swarm_guard.check_inv8_writes_boundary(target, subagent_ws, project_root, spec_dir)
+        if decision == "deny":
+            _audit("PreToolUse", payload, "deny-INV-8", str(target))
+            return deny(msg)
+        # Inside a subagent workspace — internal swarm artifact, not project
+        # source. Bypass spec_sync INV-1/INV-6 checks.
+        _audit("PreToolUse", payload, "ok-swarm-internal", str(target))
+        return ok()
+
+    # ---- INV-9: protect tasks.md during task-swarm ----
+    if task_swarm_guard.is_task_swarm_active(project_root) and task_swarm_guard.is_tasks_md(target, spec_dir):
+        tool_input = payload.get("tool_input") or {}
+        old_string = tool_input.get("old_string")
+        new_string = tool_input.get("new_string")
+        if old_string is not None and new_string is not None:
+            try:
+                full_text = target.read_text(encoding="utf-8")
+                # Apply the Edit hypothetically to get the post-edit text.
+                if tool_input.get("replace_all"):
+                    new_text = full_text.replace(old_string, new_string)
+                else:
+                    new_text = full_text.replace(old_string, new_string, 1)
+                decision, msg = task_swarm_guard.check_inv9_tasks_md_diff(full_text, new_text)
+                if decision == "deny":
+                    _audit("PreToolUse", payload, "deny-INV-9", str(target))
+                    return deny(msg)
+            except OSError:
+                pass
+        elif tool_name == "Write":
+            # Full file overwrite — compare against current text if exists.
+            try:
+                old_text = target.read_text(encoding="utf-8") if target.exists() else ""
+                new_text = tool_input.get("content") or ""
+                decision, msg = task_swarm_guard.check_inv9_tasks_md_diff(old_text, new_text)
+                if decision == "deny":
+                    _audit("PreToolUse", payload, "deny-INV-9", str(target))
+                    return deny(msg)
+            except OSError:
+                pass
 
     cls = spec_sync.classify_path(target, spec_dir, project_root)
 

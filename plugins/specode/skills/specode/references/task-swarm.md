@@ -1,12 +1,12 @@
 # Task-Swarm Mode（多角色 agent 并发执行）
 
 specode "任务执行" selector 的第三个选项 `用 task-swarm 多 agent 并发`。
-本文档是 task-swarm 模式的**单一权威**：编排步骤、subagent 协议、回写规则、铁律协调全部在这里。
+
+> ⚠️ 本文档不是运行时手册。运行时模型只看 `commands/task-swarm.md` 里的 7 步 CLI 协议。本文档是**设计规约**：为什么这样设计、状态机怎么运转、铁律如何兜底——给读代码、修脚本、扩展功能的人看。
 
 ## 它解决什么
 
-specode 默认的 §7 Task Execution 是**单 agent 顺序执行**：主会话一个一个跑任务、自己写代码、自己跑验证、自己打 `[x]`。
-等于让同一个 LLM 上下文自己给自己背书——这是"自我认可"问题。
+specode 默认的 §7 Task Execution 是**单 agent 顺序执行**：主会话一个一个跑任务、自己写代码、自己跑验证、自己打 `[x]`。等于让同一个 LLM 上下文自我背书——这是"自我认可"问题。
 
 task-swarm 模式把任务派发给**不同角色的独立子 agent**：
 
@@ -18,28 +18,52 @@ task-swarm 模式把任务派发给**不同角色的独立子 agent**：
 子 agent 之间**无共享上下文**，只能通过 `outbox → inbox` 文件交换信息。
 这是工具+上下文的双重物理隔离。
 
-## 触发前提
+## 总体架构（控制反转）
 
-1. 当前 phase 是 `tasks` 或 `implementation`
-2. 当前 session 持有 spec lock（`verify-lock` 返回 `ok`）
-3. plugin 安装时 `plugins/specode/agents/task-swarm-*.md` 已自动注册为 Claude Code subagent
+旧设计：**主模型**理解全部状态机，自己解析 tasks.md / outbox，自己 Edit tasks.md。问题——长上下文里轮号心算容易乱、subagent 输出格式漂移就误判、回写时容易动到 traceability。
 
-任一条件不满足 → 温柔降级到第一项 `开始 required tasks`，并告诉用户原因。
+新设计：**脚本**持有所有确定性逻辑，**主模型只负责派单与文本生成**：
+
+| 决策点 | 由谁负责 |
+|---|---|
+| 解析 tasks.md → 派发计划 | `task_swarm_parse_md.py` |
+| 状态机推进（轮号、收敛、死循环） | `task_swarm_state.py` |
+| 解析 result.md / review.md / validation.md | `task_swarm_outbox.py` |
+| 渲染 subagent prompt（含 @writes、修复指引） | `task_swarm_prompt.py` |
+| 回写 tasks.md（行级安全 Edit） | `task_swarm_writeback.py` |
+| 综合调度 + JSON 指令 | `task_swarm.py` CLI |
+| 工具层兜底（INV-7/8/9） | `task_swarm_guard.py` + `spec_guard.py` |
+
+主模型只跑：`init → loop(next → fork → parse → advance → ...) → writeback → done`。
+
+## CLI 协议（`commands/task-swarm.md` 的实现细节）
+
+七个子命令：
+
+| 子命令 | 输入 | 输出 |
+|---|---|---|
+| `init --tasks <path>` | tasks.md 路径 | run_id + 初始派发计划 |
+| `next --run <id>` | run_id | `{"action": "fork|writeback|wait|done", ...}` |
+| `parse --run <id> --stage N --role R --round K` | outbox 文件 | `{"judgment": "...", ...}`（含 schema-error 兜底） |
+| `advance --run <id> ... --judgment J` | 判定 | 推进 state.json |
+| `writeback --run <id> --stage N` | 收敛状态 | 安全 Edit tasks.md |
+| `status --run <id>` | — | 人话状态汇报 |
+| `resolve --run <id>` | — | run_dir 路径 |
+
+主模型必须按 next 返回的指令字段去 fork——`subagent_type`、`prompt_file`、`workspace` 都由脚本提供。
 
 ## 角色到 subagent 的映射
 
-| @role | subagent_type | 职责 | 它能用的工具 |
+| @role | subagent_type | 职责 | 工具 |
 | --- | --- | --- | --- |
 | `coder` | `specode:task-swarm-coder` | 写 / 改业务代码，按子任务清单顺序完成阶段下所有叶子；修复轮按 review.md 的 P0 清单定向修补 | Bash, Read, Edit, Write, Grep, Glob |
-| `reviewer` | `specode:task-swarm-reviewer` | 评审上游 coder 的产出，输出 P0/P1/P2 分级担忧；阶段评审下不能 approve 0 P0 而不举证；连续两轮同 P0 自报死循环 | Bash, Read, Grep, Glob **(无 Edit/Write！)** |
-| `validator` | `specode:task-swarm-validator` | 跑测试 / lint / 端到端检查，给 pass/fail 判定；fail 时**必须**输出"给 coder 的修复指引"（文件 + 位置 + 做法 + 涉及需求） | Bash, Read, Grep, Glob **(无 Edit/Write！)** |
-| `planner` | `specode:task-swarm-planner` | 把粗粒度需求拆成 task-swarm 风格的 tasks.md（叶子+检查点+三角色）；输出到 outbox/plan.md 供 spec-mode 主会话审阅采纳；**不写实现代码** | Bash, Read, Grep, Glob, Write |
+| `reviewer` | `specode:task-swarm-reviewer` | 评审上游 coder 的产出，输出 P0/P1/P2 分级担忧 | Bash, Read, Grep, Glob **(无 Edit/Write)** |
+| `validator` | `specode:task-swarm-validator` | 跑测试 / lint / 端到端检查，给 pass/fail 判定；fail 时**必须**输出"给 coder 的修复指引" | Bash, Read, Grep, Glob **(无 Edit/Write)** |
+| `planner` | `specode:task-swarm-planner` | 把粗粒度需求拆成 task-swarm 风格的 tasks.md | Bash, Read, Grep, Glob, Write |
 
-**reviewer 和 validator 故意没有 Edit/Write** —— 这是工具层面的物理隔离，让"想改也改不了"。
+reviewer 和 validator 故意没有 Edit/Write —— 这是工具层面的物理隔离。
 
-> `planner` 角色在 specode + task-swarm 集成流程中**通常用不到**——specode 自身的"tasks 阶段"已经在主会话内完成了拆分。planner 主要服务两种边缘场景：(1) 用户绕过 specode 直接给一份粗粒度需求让 task-swarm 接管；(2) specode tasks.md 中某个一级阶段拆分粒度太粗，coder 主动反馈"需要再拆"时主会话可以 fork planner 单独处理这个阶段。
-
-## 按一级阶段聚合派发（核心设计）
+## 按一级阶段聚合派发
 
 specode tasks.md 的天然层级：
 
@@ -47,510 +71,177 @@ specode tasks.md 的天然层级：
 - [ ] 1. 实现登录流程           ← 一级阶段
   - [ ] 1.1 写 user model        ← 叶子任务
     - 文件：`src/models/user.py`
-    - 验证：`pytest tests/test_user.py`
     - _需求：1.1_
-  - [ ] 1.2 写 auth service
-    - 文件：`src/auth/service.py`
-    - _需求：1.2_
 - [ ] 2. 检查点 — 跑通登录流程   ← specode 内置 validator 任务
-- [ ] 3. 实现登出
-  - [ ] 3.1 ...
-- [*] 4. 优化（可选）            ← `[*]` 可选标记
 ```
 
-派发规则：
+派发规则（由 `task_swarm_parse_md.py` + `task_swarm_state.py` 实现）：
 
 | 角色 | 派发粒度 | 数量 |
 | --- | --- | --- |
-| **coder** | 每个一级阶段 **一个**（包揽阶段下所有叶子任务） | = 阶段数 |
-| **reviewer** | 每个一级阶段 **一个**（评审整阶段的所有产物） | = 阶段数 |
-| **validator** | 直接复用 specode 的"检查点"任务（含"检查点"字样的一级任务） | = 检查点数 |
+| **coder** | 每个一级阶段一个（包揽阶段下所有叶子） | = 阶段数 |
+| **reviewer** | 每个一级阶段一个 | = 阶段数 |
+| **validator** | 复用 specode 的"检查点"任务 | = 检查点数 |
 
-例：5 阶段 / 5 检查点 / 20 子任务 → **15 个 subagent**，而不是 1:3 朴素展开的 60 个。
+并发判定：**互不冲突**（"文件:" 行的并集不相交）的阶段可以并发，受 `--parallel N` 约束（默认 3）。冲突或依赖未满足 → `next` 返回 `wait`。
 
-### 派发顺序
-
-- **阶段内**：天然串行（同一个 coder 顺序做所有子任务，上下文连贯）
-- **阶段间**：取该阶段下所有叶子任务的 "文件：" 并集做冲突检测，**互不冲突的阶段可并发**
-- **同阶段** coder → reviewer → validator：严格串行
-- "检查点"任务 = 它所跟随阶段的 validator，不重复 fork
-
-### 子任务级控制（可选标签）
-
-用户在 tasks.md 的叶子任务后可加 task-swarm 专属标签：
+### 子任务标签（`@swarm:`）
 
 | 标签 | 行为 |
 | --- | --- |
-| `@swarm:full` | 该叶子单独走 coder+reviewer+validator（高风险/SHALL 涉及核心）|
-| `@swarm:coder-only` | 只 coder，不纳入阶段评审 |
-| `@swarm:skip` | 完全跳过，回退给主会话处理 |
+| `@swarm:full` | 单独走 coder+reviewer+validator |
+| `@swarm:coder-only` | 只 coder |
+| `@swarm:skip` | 完全跳过 |
 | 无标签 | 默认按阶段聚合 |
 
 启发式默认（无标签时）：
 - `[*]` 可选任务 → 自动 coder-only
-- 没有 `_需求：` traceability 的辅助任务 → 自动 coder-only
+- 无 `_需求：` traceability → 自动 coder-only
 
-#### 优先级冲突处理
+冲突时优先级（高→低）：`skip > full > coder-only > 启发式`。
+解析器在冲突时**不报错**，仅在 `warnings` 数组里留 `[INFO]` / `[WARN]` 行，可用 `init` 输出查看。
 
-当**显式标签**与**启发式默认**冲突，或**多个显式标签**同时出现时，按以下规则裁决（高 → 低）：
+## 状态机
 
-| 优先级 | 规则 | 例 |
-| --- | --- | --- |
-| 1 | 显式 `@swarm:skip` **总是赢**——无论其他标签或启发式怎么说 | `- [*] 1.1 xxx @swarm:full @swarm:skip` → 跳过 |
-| 2 | 显式 `@swarm:full` 优先于 `@swarm:coder-only` | `- [ ] 1.1 xxx @swarm:full @swarm:coder-only` → full（全角色）|
-| 3 | 显式 `@swarm:coder-only` 优先于启发式 | `- [ ] 1.1 xxx @swarm:coder-only` (含 `_需求：1.1_`) → coder-only（用户显式声明优先）|
-| 4 | 显式 `@swarm:full` 优先于启发式 | `- [*] 1.1 xxx @swarm:full` → full（用户明确要全角色覆盖可选任务）|
-| 5 | 都没显式标签 → 跑启发式（`[*]` → coder-only；无 `_需求：` → coder-only；其他默认按阶段聚合）| `- [ ] 1.1 xxx _需求：1.1_` → 按阶段聚合 |
-
-**主编排器解析时**：每个叶子任务先扫所有 `@swarm:*` 标签，去重后按上表裁决；启发式只在标签集为空时启用。冲突时**不要**报错，但在 orchestrator.log 留一行 `[INFO] T1.1 标签冲突 @swarm:full + @swarm:coder-only → 采用 full`，便于排查为什么某个任务的派发跟用户预期不一致。
-
-**遇到无效标签**（如 `@swarm:strict` 拼错）：当成无标签处理，并在 orchestrator.log 警告一条 `[WARN] T1.1 无效 @swarm: 标签 "strict"，已忽略`。
-
-## 编排步骤（主会话必须按顺序执行）
-
-### Step 1：建立 run 工作区
-
-```bash
-RUN_ID="$(date +%Y%m%d-%H%M%S)-$(openssl rand -hex 3)"
-RUN_DIR="<project root>/.task-swarm/runs/$RUN_ID"
-mkdir -p "$RUN_DIR/agents"
-```
-
-记住 `RUN_ID`、`RUN_DIR`。
-
-### Step 2：解析 tasks.md
-
-逐行扫描 tasks.md。识别：
-- 一级阶段：`- [ ] N. 标题`（N 是数字）
-- 叶子任务：`  - [ ] N.M 标题`（缩进 + 二级编号）
-- 检查点任务：一级且标题含"检查点"
-- 子任务的 `文件：...` / `验证：...` / `_需求：x.y_` 元信息行
-- 可选标签：`@swarm:full|coder-only|skip`
-
-按"一级阶段"分组，得到派发计划：
+每个 stage 的生命周期：
 
 ```
-阶段 1: [叶子 1.1, 叶子 1.2, 叶子 1.3] → coder + reviewer
-阶段 2: 检查点 → validator (依赖阶段 1)
-阶段 3: [叶子 3.1, 3.2] → coder + reviewer
-阶段 4: 检查点 → validator (依赖阶段 3)
-阶段 5: [叶子 5.1 (optional)] → coder-only
+pending → running → converged ✔
+                 └→ failed ✗
+                 └→ skipped (全部 leaf 是 @swarm:skip)
 ```
 
-### Step 3：拓扑排序 + 派发循环
-
-派发循环：
-1. 找所有依赖都已完成的阶段
-2. 取这些阶段的 "文件" 并集，互不冲突的阶段可并发
-3. 在同一回复里发出多个 Task 工具调用（并发派发）
-4. 等任意 subagent 返回 → 处理结果（Step 5）→ 解锁下游
-
-### Step 4：派发一个阶段（核心）
-
-#### 4a. 准备阶段工作区
-
-```bash
-STAGE_DIR="$RUN_DIR/agents/stage-${STAGE_NUM}-coder"
-mkdir -p "$STAGE_DIR/inbox" "$STAGE_DIR/outbox"
-
-# 中继：把每个依赖阶段的 outbox 拷到本阶段 inbox
-for dep_stage in $DEPENDS_ON; do
-  DEP_OUTBOX="$RUN_DIR/agents/stage-${dep_stage}-coder/outbox"
-  [ -d "$DEP_OUTBOX" ] && cp "$DEP_OUTBOX"/* "$STAGE_DIR/inbox/" 2>/dev/null
-  DEP_REVIEW="$RUN_DIR/agents/stage-${dep_stage}-reviewer/outbox"
-  [ -d "$DEP_REVIEW" ] && cp "$DEP_REVIEW"/* "$STAGE_DIR/inbox/" 2>/dev/null
-done
-```
-
-#### 4b. 构造 coder prompt（包含本阶段所有子任务清单）
+`task_swarm_state.next_action()` 决定下一步：
 
 ```
-你正在 task-swarm 流程中作为 CODER 子 agent 执行 specode 的阶段 N。
+pending stage:
+  └ kind=checkpoint → fork validator r1
+  └ kind=stage      → fork coder r1
 
-# 阶段 N: <一级任务标题>
+running stage, last action was:
+  coder ok:
+    └ checkpoint → reviewer (post-fix scope)
+    └ has full/default leaves → reviewer
+    └ all coder-only → converge
 
-## 本阶段子任务清单（按顺序完成）
-- 1.1 写 user model
-  - 文件: src/models/user.py
-  - 需求: 1.1
-- 1.2 写 auth service
-  - 文件: src/auth/service.py
-  - 需求: 1.2
-- 1.3 写 controller
-  - 文件: src/api/login.py
-  - 需求: 1.3
+  reviewer approved → converge
 
-## 边界
-- 项目根: <pwd>
-- 你只能修改这些路径: src/models/user.py, src/auth/service.py, src/api/login.py
-- 你的私有工作区: <STAGE_DIR 绝对路径>
-- inbox（只读）: <STAGE_DIR>/inbox
-- outbox（你的产出）: <STAGE_DIR>/outbox
-- 参考 spec 文档（只读，绝对不要修改）: <spec-dir>/requirements.md, design.md
+  reviewer p0:
+    └ round >= max_rounds → fail
+    └ else → coder (p0-fix scope)
 
-## inbox 内容
-<ls inbox 列表>
+  reviewer loop / schema-error → fail
 
-## 输出协议
-按子任务顺序完成。每完成一个，在 outbox/result.md 追加一行：
-- 1.1 写 user model: done — src/models/user.py
-- 1.2 写 auth service: done — src/auth/service.py
-- 1.3 写 controller: failed — ImportError, 缺 src/api/__init__.py
+  validator pass → converge
 
-末行: STATUS: ok 或 STATUS: failed: <原因>
-绝不修改 spec-dir 内任何文件（requirements/design/tasks/config）。
+  validator fail:
+    └ round >= max_rounds → fail
+    └ else → coder (validator-fail-fix scope) → reviewer (post-fix) → validator
+
+  validator loop / schema-error → fail
 ```
 
-#### 4c. 派发
+reviewer 循环 与 validator 循环 **各自独立计数**。MAX_ROUNDS 默认 3，可被 `--max-rounds N` 覆盖。
 
-```
-Task(
-  description="阶段 N coder: <标题简称>",
-  subagent_type="specode:task-swarm-coder",
-  prompt=<上述构造的 prompt>
-)
-```
+## 死循环识别（成本控制）
 
-#### 4d. coder 结束后立刻派 reviewer
+reviewer / validator 的 prompt 强制要求：若**本轮**的 P0 / fail 项与上轮 inbox 的 prev-* 文件完全一致，在文件**顶部**加 `## 进入死循环风险` 节。`task_swarm_outbox` 检测到该节立即把 judgment 升级为 `loop`，主编排器收到 loop 后立刻标 stage failed。
 
-把 coder 的 outbox 中继到 reviewer 的 inbox，构造 reviewer prompt（明确告知"这是阶段批评审，按子任务分节给担忧，必须输出 P0/P1/P2 分级"），`subagent_type="specode:task-swarm-reviewer"`。
+## 三检写守（具体落地）
 
-#### 4e. **循环：reviewer P0 修复轮**（核心）
+`writeback` 子命令内部自动执行：
 
-每个阶段不是跑一遍就结束，而是 `coder → reviewer → 修复 coder → 复审 reviewer → ...` 循环到 reviewer **无 P0**。
+1. `spec_session._verify(spec_dir, session_id)` — INV-3 lock check
+2. `spec_session._heartbeat(...)` — 续锁
+3. 调用 `task_swarm_writeback.apply_writeback()` 做行级安全 Edit
+4. 通过 `diff_safe_line_by_line` 二次确认 diff 只包含 checkbox 切换 + `> ` 注释
 
-```python
-# 伪代码（主编排器在脑中跑）。类型用 Python typing 风格标注，便于实现时对照。
-from typing import Literal
-from dataclasses import dataclass
-
-@dataclass
-class ReviewResult:
-    review_md: str                         # outbox/review.md 全文
-    p0_count: int                          # "## P0" 节非 "(none)" 的条目数
-    loop_warning: bool                     # 是否含 "## 进入死循环风险"
-
-@dataclass
-class ValidationResult:
-    validation_md: str                     # outbox/validation.md 全文
-    judgment: Literal["pass", "fail"]
-    loop_warning: bool
-
-def fork_reviewer(
-    stage_num: int,                        # 一级阶段编号，如 1
-    round: int,                            # 当前轮号 (1=初轮, 2=复审, ...)
-    prev_review: str | None = None,        # 上一轮 review.md（修复轮才有）
-) -> ReviewResult: ...
-
-def fork_coder_fix_round(
-    stage_num: int,
-    round: int,
-    review: ReviewResult,                  # 这一轮 reviewer 的输出
-) -> None: ...                             # 产物落到 stage-N-coder-r<round>/outbox/
-
-# --- reviewer P0 循环 ---
-round = 1
-MAX_ROUNDS = 3                             # 默认上限，可被 /task-swarm --max-rounds N 覆盖
-prev_review = None
-
-while True:
-    review = fork_reviewer(stage_num, round, prev_review)
-    if review.p0_count == 0:
-        break                              # ✅ 进入 4f validator
-    if review.loop_warning:                # reviewer 自报"我跟上轮提的一模一样"
-        mark_stage_failed("reviewer 死循环")
-        return
-    if round >= MAX_ROUNDS:
-        mark_stage_failed(f"已 {round} 轮仍有 P0")
-        return
-    round += 1
-    fork_coder_fix_round(stage_num, round, review)
-    prev_review = review.review_md
-```
-
-**派发修复轮 coder**：
-
-```bash
-# 工作区命名加 -r<round> 后缀，保留每轮历史
-COD_DIR_R="$RUN_DIR/agents/stage-${STAGE_NUM}-coder-r${ROUND}"
-mkdir -p "$COD_DIR_R/inbox" "$COD_DIR_R/outbox"
-
-# inbox 必须包含：
-# - prev-result.md  (上一轮 coder 的产出)
-# - review.md       (这一轮 reviewer 的 P0 清单)
-cp "$RUN_DIR/agents/stage-${STAGE_NUM}-coder${PREV_SUFFIX}/outbox/result.md" \
-   "$COD_DIR_R/inbox/prev-result.md"
-cp "$RUN_DIR/agents/stage-${STAGE_NUM}-reviewer${REV_SUFFIX}/outbox/review.md" \
-   "$COD_DIR_R/inbox/review.md"
-```
-
-修复轮的 coder prompt **必须**明确告知：
-- 这是修复轮第 R 轮（共最多 MAX_ROUNDS 轮）
-- 只修 inbox/review.md 里的 P0 项，**不要**碰 P1/P2
-- 修完每条 P0 要在 outbox/result.md 用 `- [x] <P0 摘要> — 已修复: ...` 标记
-- 不要重写整个阶段，是定向补丁
-
-复审同理：reviewer 工作区也命名 `-r<round>`，inbox 加 `prev-review.md`。
-
-#### 4f. **循环：validator fail 修复轮**
-
-reviewer 全清后才派 validator。validator 判 fail 也走类似循环：
-
-```python
-def fork_validator(
-    stage_num: int,
-    round: int,
-    prev_validation: str | None = None,
-) -> ValidationResult: ...
-
-def fork_coder_fix_round_for_validator(
-    stage_num: int,
-    round: int,
-    val: ValidationResult,                 # validator 输出，含"给 coder 的修复指引"
-) -> None: ...
-
-def fork_reviewer_quick_check(
-    stage_num: int,
-    round: int,
-    coder_diff_files: list[str],           # 仅本轮 coder 改的文件，缩窄评审面
-) -> ReviewResult: ...
-
-round = 1
-prev_validation = None
-
-while True:
-    val = fork_validator(stage_num, round, prev_validation)
-    if val.judgment == "pass":
-        break                                          # ✅ 阶段完成
-    if val.loop_warning:
-        mark_stage_failed("validator 死循环")
-        return
-    if round >= MAX_ROUNDS:
-        mark_stage_failed(f"validator 已 {round} 轮仍 fail")
-        return
-    round += 1
-    fork_coder_fix_round_for_validator(stage_num, round, val)
-    # 修后必须再过一次 reviewer（防引入回归），只看本轮 coder 改的文件
-    fork_reviewer_quick_check(stage_num, round, coder_diff_files=val.fix_files)
-    prev_validation = val.validation_md
-```
-
-注意：validator fail 后的 coder 修复轮**必须再过一次 reviewer**——避免 coder 改坏新地方却没人发现。reviewer 在这种"checkpoint 复审"模式下只看 validator 失败点附近的改动，不重新评全阶段。
-
-#### 4g. 循环上限统一约定
-
-- 默认 `MAX_ROUNDS = 3`
-- `reviewer 循环` 和 `validator 循环` **各自独立计数**（即最坏情况：3 轮 reviewer P0 修复 + 3 轮 validator fail 修复 = 7 次 coder fork）
-- 用户可在调用时 `--max-rounds 5` 覆盖
-
-#### 4h. 死循环识别（成本控制）
-
-reviewer 和 validator 在 prompt 里被要求：如果新一轮的 P0/fail 跟上一轮**完全相同**，在产物顶部加 `## 进入死循环风险` 标记。主编排器看到这个标记立即终止本阶段循环，避免无效消耗。
-
-#### 4i. 检查点阶段单独派 validator（仍走 4f 循环）
-
-specode 的"检查点"任务直接对应 validator。它没有先跑的 reviewer（因为整个阶段已经审过了），但 fail 时同样走 4f 的循环（fork coder 修复 → 再过一次 reviewer → 重新 validator）。
-
-```
-Task(
-  description="检查点 N: <标题>",
-  subagent_type="specode:task-swarm-validator",
-  prompt=<包含上游 coder 与 reviewer 全部产物的 inbox 列表 + 运行命令清单>
-)
-```
-
-### Step 5：回写 tasks.md（铁律核心）
-
-主会话**只在每个阶段循环最终收敛后**才回写 checkbox 状态。中间轮（reviewer 提 P0 / validator fail）只在子任务下追加进度注释，不改 `[ ]` 字符——避免循环跑到一半就误标 `[x]`。
-
-#### 5a. 三检写守（specode §10）
-
-每次写 tasks.md 之前：
-
-```bash
-python3 plugins/specode/scripts/spec_session.py verify-lock <spec-dir> --session <id>
-# 返回 evicted → 立即停 swarm，告诉用户被其他窗口接管
-
-python3 plugins/specode/scripts/spec_session.py heartbeat <spec-dir>
-```
-
-#### 5b. 中间轮回写规则（循环跑到一半时）
-
-每轮 reviewer / validator 跑完后，主会话**只追加注释**到子任务下面，不动 checkbox：
-
-```markdown
-- [ ] 1.3 写 controller
-  - 文件: src/api/login.py
-  - _需求：1.3_
-  > 第 1 轮 reviewer 提 P0: 缺 rate limit、login 失败分支未区分错误码
-  > 第 2 轮 reviewer 提 P0: rate limit 用了非线程安全的全局变量（新引入）
-```
-
-```markdown
-- [ ] 2. 检查点 — 跑通登录流程
-  > 第 1 轮 validator fail: pytest test_lockout_after_5_failures 失败 (423 vs 401)
-```
-
-这样用户随时打开 tasks.md 能看到当前循环到第几轮、卡在哪。
-
-#### 5c. 终态回写规则（阶段循环收敛后）
-
-阶段循环结束（reviewer 0 P0 + validator pass，或达上限 failed）→ 主会话才改 checkbox：
-
-**成功收敛**：
-- 阶段下每个 done 的子任务: `[ ]` → `[x]`
-- 一级阶段（所有叶子都 done）: `[ ]` → `[x]`
-- 检查点任务（validator pass）: `[ ]` → `[x]`
-- 把循环过程中追加的 `> 第 N 轮...` 注释**保留**（审计价值），可以再加一行 `> ✔ 第 N 轮收敛，共 R 轮迭代`
-
-**失败收敛**：
-- 子任务 `failed` 或 `[ ]` 保持，追加 `> ✗ 已达 ${MAX_ROUNDS} 轮上限仍未收敛，需要人工介入`
-- 一级阶段保留 `[~]`（in-progress）或回 `[ ]`（看用户后续怎么处理）
-- 检查点 fail 同样保持 `[ ]` + 追加失败摘要
-
-#### 5d. 只动 checkbox + 注释行
-
-无论中间轮还是终态，**禁止改**：
-- `_需求：x.y_` traceability 行
-- `文件：xxx` / `验证：xxx` 元信息行
-- 子任务标题文字
-- 嵌套缩进结构
-
-每次回写完立刻 Write 落盘，**不在内存累积多个变更**。
-
-### Step 6：终态汇报
-
-所有阶段处理完后，主会话给用户（包含**每阶段循环次数**，方便发现需求 / 设计粗糙的阶段）：
-
-```
-🐝 task-swarm 已完成 spec <slug> (run: <RUN_ID>)
-   max-rounds: 3  ·  默认每阶段 reviewer 循环 + validator 循环各 ≤3 轮
-
-按阶段：
-  阶段 1 实现登录:     ✔ 1 轮 reviewer · ✔ 1 轮 validator      (检查点 2)
-  阶段 3 实现登出:     ✔ 2 轮 reviewer · ✗ 3 轮 validator FAIL (检查点 4)
-    - 3.2 撤销 session: validator 第 3 轮仍 fail，未达 _需求：3.2_
-      最后 fail: AssertionError: token still valid after logout
-  阶段 5 优化（可选）: 已跳过 (@swarm:coder-only)
-
-tasks.md 已同步：5 done / 1 in-progress (循环上限) / 1 failed
-subagent 工作区: .task-swarm/runs/<RUN_ID>/
-
-接下来：
-- 看阶段 3 的 5 轮迭代历史: ls .task-swarm/runs/<RUN_ID>/agents/stage-3-*
-- 人工修 3.2 后用 /spec-accept 继续验收
-- 或重跑该阶段: /task-swarm --resume <RUN_ID> --stage 3
-- 或 /continue 切换到其他 spec
-```
-
-随后正常进入 §8 Acceptance 阶段。
-
-## 关键原则
-
-1. **主会话是编排器，不是执行者** — 主会话自己不写业务代码、不做评审。所有任务必须 fork subagent。
-2. **每个 fork 必须用对应 subagent_type**（**必须**带 `specode:` plugin 前缀，否则 Claude Code 报 "Agent type not found"）— `specode:task-swarm-coder` / `specode:task-swarm-reviewer` / `specode:task-swarm-validator` / `specode:task-swarm-planner`。不要 fall back 到 `general-purpose`。
-3. **subagent 之间无共享上下文** — 它们只能看自己 inbox 里的文件。主会话负责中继 outbox → inbox。
-4. **subagent 绝不碰 spec 目录** — spec 文档锁仍由主会话持有，subagent 只动业务代码。
-5. **每阶段回写 tasks.md 都走 verify-lock** — 防止跨窗口接管时数据撕裂。
-6. **失败不要硬扛** — 上游失败级联跳过下游，给用户清晰的失败链。
-7. **循环到收敛或上限才算阶段结束** — 不是 coder→reviewer→validator 跑一遍就完。reviewer 提 P0 必须回 coder 修复并复审；validator fail 必须回 coder 修复并重审 + 重新验。默认上限 3 轮，达到上限标 failed。
-8. **中间轮不动 tasks.md checkbox** — 阶段循环跑到一半只追加 `> 第 N 轮...` 注释，避免误标 `[x]`。
-9. **死循环识别** — reviewer / validator 自报"跟上轮一模一样的 P0/fail"时主会话立即终止本阶段循环，标 failed，省成本。
-
-## 与 specode 铁律的逐条对照
-
-| specode 铁律 | task-swarm 模式表现 |
-| --- | --- |
-| Document-first | ✅ 主会话每阶段实时回写 tasks.md checkbox |
-| Post-`/continue` sync | ✅ task-swarm 期间用户若提需求变更 → 退回 specode 路由，同 turn 写文档 |
-| INV-4 (测试要点 follow-mode) | ✅ task-swarm 不动 requirements/bugfix，不触发 |
-| Write-before-verify-lock | ✅ 主会话每次回写前调 verify-lock |
-| Phase gate compliance | ✅ task-swarm 只在"任务执行"阶段被调起 |
-| Forced writes | ✅ 每个阶段回写失败立即停 swarm，不在内存累积 |
-| 三检写守 (specId/boundary/lock) | ✅ 主会话回写 tasks.md 时正常守 |
-| Boundary anti-contamination | ✅ subagent 工作区在 `.task-swarm/runs/`，不与 spec 目录交叉 |
-| INV-1 (源文件改动 = tasks.md 列出) | ✅ subagent 改的源文件都在 tasks.md 的"文件："行声明过 |
-| INV-2 (改源码必须同 turn 改 spec 文档) | ✅ 主会话每阶段回写 tasks.md，自动满足 |
+主编排器**不应**直接 Edit tasks.md——INV-9 hook 会拦下任何非 checkbox / 非注释的改动。
 
 ## subagent 工作目录布局
 
-每阶段的初轮目录名为 `stage-N-<role>`；修复轮加 `-r<N>` 后缀，保留每轮历史便于审计：
-
 ```
 .task-swarm/
+  active-run                          # 当前 run_id pointer（hook 用）
   runs/
     20260517-153012-ab12cd/
-      state.json                                  # 运行状态（可选）
-      orchestrator.log
+      state.json                      # 状态机持久化
       agents/
-        stage-1-coder/                            # 初轮 coder
-          task.md                                 # subagent 拿到的完整 prompt
-          inbox/                                  # 上游产物
+        stage-1-coder/                # 初轮
+          task.md                     # 预渲染的 subagent prompt
+          inbox/                      # 上游产物（脚本中继过来）
           outbox/
-            result.md                             # 子任务状态汇总
-        stage-1-reviewer/                         # 初轮 reviewer（假设 0 P0，跳过修复轮）
-          task.md
-          inbox/  ← 复制了 stage-1-coder/outbox
-          outbox/
+            result.md
+        stage-1-reviewer/             # 初评
+          inbox/  ← coder outbox 自动 cp
+          outbox/review.md
+        stage-1-validator/            # 初验
+        stage-3-coder-r2/             # 修复轮 2
+          inbox/
+            prev-result.md
             review.md
-        stage-1-validator/                        # 初轮 validator（pass，跳过修复轮）
-          task.md
-          inbox/
-          outbox/
-            validation.md
-
-        stage-3-coder/                            # 阶段 3 初轮
-        stage-3-reviewer/                         # 初轮 reviewer 提了 P0
-          outbox/review.md  ← 含 P0 清单
-        stage-3-coder-r2/                         # 修复轮 2
-          inbox/
-            prev-result.md  ← 上轮 coder 产出
-            review.md       ← reviewer 的 P0
-          outbox/
-            result.md       ← 含 "P0 修复清单"
-        stage-3-reviewer-r2/                      # 复审
-          inbox/
-            prev-review.md
-            coder-r2__result.md
-          outbox/review.md  ← 假设 0 P0，跳出循环
-        stage-3-validator/                        # 进入 validator，pass，跳过修复轮
-
-        stage-4-validator/                        # 阶段 4 是检查点，fail
-          outbox/validation.md  ← 含修复指引
-        stage-4-coder-r2/                         # validator fail 触发的 coder 修复
-        stage-4-reviewer-r2/                      # 修后必须再过一次 reviewer
-        stage-4-validator-r2/                     # 再验，pass
+          outbox/result.md
+        stage-3-reviewer-r2/
+        stage-4-validator/            # 检查点 fail
+        stage-4-coder-r2/             # validator-fail-fix
+        stage-4-reviewer-r2/          # post-fix
+        stage-4-validator-r2/
 ```
 
-主会话可以在任何时候 `cat .task-swarm/runs/<RUN_ID>/agents/stage-X-Y/outbox/*` 看产物。
 后缀规则：
 - 无后缀 = 初轮
-- `-r2`、`-r3` = 第 N 轮迭代（覆盖 reviewer / validator 循环）
-- reviewer 和 validator 循环**共用同一轮号空间**（实际是嵌套循环外层用 `-r<N>`），主编排器派发时自己跟踪
+- `-r2`、`-r3` = 第 N 轮
+- reviewer 与 validator 循环**共用同一轮号空间**，由 `task_swarm_state` 跟踪
 
-## 用户怎么用
+## 与 specode 铁律的兜底关系
 
-### 方式 1：从 specode selector 触发（推荐）
+| specode 铁律 | task-swarm 兜底机制 |
+| --- | --- |
+| Document-first | `writeback` 子命令在每阶段收敛后回写 tasks.md |
+| Post-`/continue` sync | UserPromptSubmit 注入"current step"提示，模型不会遗忘上下文 |
+| INV-3 Write-before-verify-lock | `writeback` 内部强制 `verify-lock + heartbeat` |
+| Phase gate (INV-6) | task-swarm 只在 implementation phase 被调起 |
+| Forced writes | `writeback` 失败立即 abort，不在内存累积 |
+| INV-1 (源文件 = tasks.md 列出) | subagent 工作区内的产物自动归类为 "swarm 内部"，不走 INV-1；业务代码仍走 INV-1 |
+| INV-2 (改源码必须同 turn 改 spec) | `writeback` 每阶段写 tasks.md，自动满足 |
 
-走正常 specode 流程到 tasks 确认后，在"任务执行"selector 选择 `用 task-swarm 多 agent 并发`。
+新增铁律（仅 task-swarm 期间生效）：
 
-### 方式 2：手动触发
-
-```
-/specode:task-swarm <spec-dir>/tasks.md
-```
-
-或者直接调 task-swarm（这个文档）作为参考，给主 Claude 一句"按 task-swarm 模式跑当前 spec 的 tasks.md"。
+| 铁律 | 内容 |
+| --- | --- |
+| **INV-7** | `Task` 调用 `subagent_type` 必须带 `specode:task-swarm-` 前缀，否则 hook deny |
+| **INV-8** | subagent 写边界——只能写自己 task.md 中 `@writes` 列出的文件或自己 outbox/；越界（包括 spec 文档）一律 hook deny |
+| **INV-9** | task-swarm 运行期编辑 tasks.md 必须走 `writeback` 子命令；直接 Edit 时 hook 校验 diff，只放行 checkbox 切换 + `> ` 注释，其余 deny |
+| **INV-10** | subagent outbox 必须通过 schema 校验（必需节、STATUS 行、判定字段）；`parse` 子命令返回 schema-error → 主编排器跳过 advance、retry subagent |
 
 ## 调试
 
 | 想看什么 | 命令 |
-| --- | --- |
-| 某个 subagent 收到的 prompt | `cat .task-swarm/runs/<RUN>/agents/<stage>/task.md` |
-| 某个 subagent 的产出 | `cat .task-swarm/runs/<RUN>/agents/<stage>/outbox/*` |
-| 历史 run | `ls .task-swarm/runs/` |
-| 清理 | `rm -rf .task-swarm/runs/<RUN>` |
+|---|---|
+| run 全貌 | `task_swarm.py status --run <id>` |
+| subagent 拿到的 prompt | `cat .task-swarm/runs/<id>/agents/<stage>/task.md` |
+| subagent 产出 | `cat .task-swarm/runs/<id>/agents/<stage>/outbox/*` |
+| 历史轮 | `ls .task-swarm/runs/<id>/agents/stage-3-*` |
+| 清理 | `rm -rf .task-swarm/runs/<id>` |
+
+## 关键原则（写给将来扩展功能的人）
+
+1. **不要把决策逻辑挪回 prompt**——任何"状态机"或"格式解析"应该新增 Python 函数 + 单测，不要改 references 文档让模型猜。
+2. **每条新增铁律都要有 hook 兜底**——prompt-only 约束等于没有约束。
+3. **outbox schema 是接口**——改 schema 要同步改 `task_swarm_outbox.py` + 三个 agent.md + INV-10 hook。
+4. **state.json 是持久化的**——schema 变更要带迁移逻辑或版本号 bump。
+5. **subagent prompt 由脚本渲染**——不要让主编排器自己拼 prompt。新增字段先加到 `StageContext`，再改 `render_*_prompt`。
 
 ## 完整示例
 
-参考 `references/task-swarm-example.md` —— 一份完整的 specode 风格 tasks.md 样本，演示阶段拆分、检查点任务、`@swarm:` 子任务标签的写法，以及预期的派发结构（5 阶段 / 5 子任务 / 7 个 subagent）。
+`references/task-swarm-example.md` —— 一份完整的 specode 风格 tasks.md 样本（5 阶段 / 5 子任务 / 7 个 subagent）。
+
+## 用户怎么用
+
+### 方式 1：从 specode selector 触发（推荐）
+走正常 specode 流程到 tasks 确认后，在"任务执行"selector 选择 `用 task-swarm 多 agent 并发`。
+
+### 方式 2：手动触发
+```
+/specode:task-swarm <spec-dir>/tasks.md
+```
