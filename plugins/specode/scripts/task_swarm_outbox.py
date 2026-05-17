@@ -116,9 +116,21 @@ class ReviewVerdict:
     judgment: str           # approved | p0 | loop | schema-error
     p0_count: int = 0
     p0_items: list[str] = field(default_factory=list)
+    advisory_p0_count: int = 0
+    advisory_p0_items: list[str] = field(default_factory=list)
     loop_warning: bool = False
     conclusion: str = ""
     raw_errors: list[str] = field(default_factory=list)
+
+
+# Evidence tag regex for blocking P0 items. Only P0 lines carrying one of
+# these tags trigger the coder fix loop; everything else is recorded as an
+# advisory (audit-only) so reviewer's subjective opinions can't kick off an
+# adversarial bounce-back loop.
+P0_EVIDENCE_TAG_RE = re.compile(
+    r"\[(req:[\w.\-]+|security|contract)\]",
+    re.IGNORECASE,
+)
 
 
 def parse_review(text: str) -> ReviewVerdict:
@@ -145,24 +157,37 @@ def parse_review(text: str) -> ReviewVerdict:
                 break
     if p0_section is None:
         errs.append("缺少 `## P0` 节（即便无 P0 也需写 (none)）")
-        p0_items: list[str] = []
+        all_p0_items: list[str] = []
     else:
-        p0_items = []
+        all_p0_items = []
         for line in p0_section.splitlines():
             s = line.strip()
             if not s or s.startswith("("):
                 # `(none)` and blank lines skip
                 continue
             if s.startswith("- "):
-                p0_items.append(s[2:].strip())
+                all_p0_items.append(s[2:].strip())
+
+    # Split P0 items into blocking (with evidence tag) vs advisory (no tag).
+    # Only blocking P0 triggers the coder fix loop — advisory P0 is recorded
+    # for audit but doesn't bounce code back to coder.
+    blocking_p0: list[str] = []
+    advisory_p0: list[str] = []
+    for item in all_p0_items:
+        if P0_EVIDENCE_TAG_RE.search(item):
+            blocking_p0.append(item)
+        else:
+            advisory_p0.append(item)
 
     if errs:
         return ReviewVerdict(
             judgment="schema-error",
             loop_warning=loop,
             conclusion=conclusion,
-            p0_count=len(p0_items),
-            p0_items=p0_items,
+            p0_count=len(blocking_p0),
+            p0_items=blocking_p0,
+            advisory_p0_count=len(advisory_p0),
+            advisory_p0_items=advisory_p0,
             raw_errors=errs,
         )
 
@@ -171,16 +196,20 @@ def parse_review(text: str) -> ReviewVerdict:
             judgment="loop",
             loop_warning=True,
             conclusion=conclusion,
-            p0_count=len(p0_items),
-            p0_items=p0_items,
+            p0_count=len(blocking_p0),
+            p0_items=blocking_p0,
+            advisory_p0_count=len(advisory_p0),
+            advisory_p0_items=advisory_p0,
         )
 
     return ReviewVerdict(
-        judgment="p0" if p0_items else "approved",
+        judgment="p0" if blocking_p0 else "approved",
         loop_warning=False,
         conclusion=conclusion,
-        p0_count=len(p0_items),
-        p0_items=p0_items,
+        p0_count=len(blocking_p0),
+        p0_items=blocking_p0,
+        advisory_p0_count=len(advisory_p0),
+        advisory_p0_items=advisory_p0,
     )
 
 
@@ -298,6 +327,8 @@ def parse_outbox(role: str, outbox_dir: Path) -> dict:
             "errors": v.raw_errors,
             "p0_count": v.p0_count,
             "p0_items": v.p0_items,
+            "advisory_p0_count": v.advisory_p0_count,
+            "advisory_p0_items": v.advisory_p0_items,
             "loop_warning": v.loop_warning,
             "conclusion": v.conclusion,
         }
