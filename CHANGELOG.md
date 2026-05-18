@@ -4,6 +4,79 @@
 
 _no entries yet_
 
+## 0.4.0 (2026-05-18)
+
+### Changed (behavior change — please read)
+
+- **CDSG downgraded to advisory.** INV-1 / INV-2 / INV-4 / INV-6 no
+  longer block the tool call when violated. Instead they record a
+  sticky advisory on `.sync-ledger.json` (new field
+  `pending_advisories`) and inject it into the next
+  `UserPromptSubmit` status block. Rationale: the previous hard-deny
+  caused legitimate work (e.g. P0 hot-fixes during task-swarm coder
+  rounds) to be interrupted mid-stride while the model retried
+  permutations to satisfy the rule. Advisory keeps the drift signal
+  visible without breaking flow.
+  - Auto-clear: editing any spec doc drops INV-1/2/4 advisories
+    (the drift those warned about is being addressed).
+  - Manual dismiss: `python3 scripts/spec_sync.py dismiss-advisories
+    [--inv INV-1,INV-2]`
+  - Visible in: ledger `pending_advisories[]`, status block in next
+    turn, and `spec_sync.py status` output.
+  - **Data-safety INVs unchanged**: INV-3 / INV-7 / INV-8 / INV-9
+    remain hard-enforced (`exit 2`). They protect against actual data
+    corruption (evicted writes, bad subagent dispatch, subagent
+    boundary breach, tasks.md non-writeback edit).
+
+### Added
+
+- **INV-11 — Non-interactive Bash guard.** New `bash_guard.py` with two
+  layers of defense against agent Bash hanging on TTY prompts:
+  - **PreToolUse hard-deny** of 14 known interactive command patterns:
+    `npm create` (no `--yes`), `npx` (no `--yes`), `npm init` (no `-y`),
+    `yarn create`, `pnpm create`, `git rebase -i`, `git add -p/-i`,
+    `git commit` (no `-m`/`-F`/`--amend --no-edit`), TUI editors/pagers
+    (`vim`/`nano`/`less`/`top`/`man`/...), interactive shells (`bash -i`,
+    `python -i`), bare REPLs (`python3` alone), `ssh` without
+    `BatchMode`, `gh pr create` without `--title`/`--body`, `apt install`
+    without `-y`. Each denial includes a ready-to-paste non-interactive
+    rewrite.
+  - **PostToolUse hang signature scan** of Bash stdout/stderr tail
+    (4 KiB) for ~17 known prompt strings (`Ok to proceed?`, `[Y/n]`,
+    `password:`, `确认吗`, etc.) plus exit code 124 (`timeout` kill).
+    When detected, injects an `additionalContext` advisory into the
+    next turn telling the model the previous command hung and not to
+    retry the same form.
+  - Hooks: `hooks.json` PreToolUse matcher extended from
+    `Edit|Write|MultiEdit|Task` → `+Bash`; PostToolUse from
+    `Edit|Write|MultiEdit` → `+Bash`. INV-11 works without an active
+    spec session (Bash hangs are universal, not spec-bound).
+  - 55 new unit tests in `tests/test_bash_guard.py` (positive +
+    negative samples per rule, hang signature detection).
+
+- **`/spec --dismiss-advisories` CLI** (`spec_sync.py dismiss-advisories`)
+  — clears all sticky advisories or `--inv INV-1,INV-6` for a subset.
+
+- **SKILL.md Iron Rule #9** — Non-interactive Bash discipline. Lists
+  the safe forms (`npm create xxx -- --yes`, `git commit -m`, etc.)
+  the model should default to before the hook ever has to deny.
+
+### Migration
+
+Users on 0.3.x upgrading to 0.4.0:
+
+- Code paths that previously expected `exit 2` from INV-1/2/4/6 now
+  see `exit 0` plus a sticky advisory. Re-tune any local automation
+  that grepped `~/.specode/audit/*.log` for `deny-INV-1` —
+  the new audit string is `advisory-INV-1`.
+- `pending_advisories[]` field appears in `.sync-ledger.json` on first
+  hook fire after upgrade. Older ledgers without the field continue
+  to work (defaulted to `[]`).
+- No spec session needs to be re-created.
+- `freeform` mode meaning subtly shifted: previously "INV-1 bypass,
+  INV-2 still enforced"; now "INV-1 silenced (no advisory recorded
+  either); INV-2/4/6 still raise advisories." Effectively quieter.
+
 ## 0.3.2 (2026-05-18)
 
 ### Fixed

@@ -1,6 +1,6 @@
 {
   "name": "specode",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "Specification-driven workflow with hard sync enforcement between code and docs (Claude Code + CodeBuddy).",
   "author": {
     "name": "xueqiang",
