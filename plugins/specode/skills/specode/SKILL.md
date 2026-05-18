@@ -48,6 +48,8 @@ These rules are checked at **every turn** of every specode session. Never violat
 
 7. ⛔ **Forced writes.** Every config / document mutation must be persisted on the spot. When a write fails (IOError / permission / `lock_lost`), abort the operation — never continue with in-memory unpersisted state.
 
+8. ⛔ **Selector via `spec_choice.py` only — never hand-roll options.** Every phase-gate selector (workflow choice / 文档确认 / 任务执行 / `/continue` 接管 / 验收 / 澄清完成) MUST be produced by running the exact `spec_choice.py` command from `references/prompts.md` and relaying its stdout **verbatim**. You **MUST NOT** type the option list from memory, paraphrase it, drop options, reorder them, or translate the labels. Hand-rolling silently hides newer options the script knows about (e.g. omitting `用 task-swarm 多 agent 并发` from the 任务执行 selector and forcing the user into the default path). If you don't have the exact command in context, Read `references/prompts.md` first — never improvise.
+
 These rules trigger detectable signals (lint, `/continue` ⚠ markers, verify-lock exit codes). Treat any of those signals as a regression on your part, not a tool quirk.
 
 ## Command Entry (Summary)
@@ -165,6 +167,21 @@ All user-facing output (summaries, questions, confirmations, status, errors) —
 Exceptions (English / original form): technical terms, command names, file paths, code identifiers; content inside code blocks; skill's own rule files (`SKILL.md`, `references/`).
 
 If the user's requirement is in English, generated spec documents may use English; other agent output (summaries, confirmations) stays Chinese.
+
+## Document Output Brevity
+
+When writing or updating a spec document (`requirements.md` / `bugfix.md` / `design.md` / `tasks.md` / `implementation-log.md`), **never reprint the full document content in chat**. The Write/Edit tool UI already shows a preview; the user can also open the file. Duplicating the full content in user-facing text is pure noise.
+
+In chat, report only:
+
+- File path (one line)
+- Section headings or 3–8 key change bullets (e.g., "added §4 data model / §5.B Mascot behavior / tightened §6 validation thresholds")
+- Open questions, if any
+- Next action (gate confirm / next phase / etc.)
+
+Never paste the document body, EARS SHALL clauses, code snippets, full task lists, or full design rationale. Comply if the user explicitly asks; otherwise default to **summary only**.
+
+This applies equally to first-time creation and to follow-up edits.
 
 ## References
 

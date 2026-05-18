@@ -492,6 +492,7 @@ def main(argv: list) -> int:
     subcommand = argv[1]
 
     try:
+        # stdin-block: hook entry point — Claude Code / CodeBuddy feed a bounded JSON payload then close stdin, will not hang
         raw = sys.stdin.read()
         payload = json.loads(raw) if raw.strip() else {}
     except json.JSONDecodeError as e:

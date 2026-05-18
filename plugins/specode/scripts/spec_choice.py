@@ -1,8 +1,21 @@
 #!/usr/bin/env python3
+"""Stateless selector emitter for specode confirmations.
+
+Design (post-0.4.0): this script is **non-interactive only**. It prints the
+title + option block + a machine-readable sentinel and exits 0. The agent
+(Claude Code / CodeBuddy main session) is expected to relay the stdout to
+the user verbatim and resume work when the user replies with a number.
+
+Why no `input()` / curses anymore: agent Bash tools do not have a real TTY,
+and any blocking stdin read leaves the process hanging indefinitely. The
+prior TTY-only paths were a hang risk under CodeBuddy's piped stdin (the
+process never received EOF). This module now physically cannot block.
+
+The `--no-curses` flag is kept for back-compat but is a no-op.
+"""
 from __future__ import annotations
 
 import argparse
-import curses
 import json
 import sys
 from dataclasses import dataclass
@@ -31,7 +44,8 @@ def print_result(index: int, option: Option, as_json: bool) -> None:
         print(option.label)
 
 
-def choose_numbered(title: str, options: list[Option], default: int) -> int:
+def emit_options(title: str, options: list[Option], default: int) -> None:
+    """Print the option block + sentinel. Never reads stdin."""
     print(title)
     for index, option in enumerate(options, start=1):
         suffix = " (Recommended)" if option.recommended else ""
@@ -42,68 +56,20 @@ def choose_numbered(title: str, options: list[Option], default: int) -> int:
     if default >= 0:
         prompt += f" [{default + 1}]"
     prompt += ": "
-    try:
-        value = input(prompt).strip()
-    except EOFError:
-        # stdin is not a real terminal (e.g. Claude Code Bash tool).
-        # This is an EXPECTED path under CLI coding agents: print the option block
-        # plus a machine-readable sentinel on stdout, and exit 0.
-        # The agent must relay the stdout block to the user verbatim and end the turn.
-        sys.stdout.write("\n")
-        sys.stdout.write("[specode:non-interactive] 选项已就绪：请把上方选项原样转发给用户，并在对话中等待编号回复。\n")
-        sys.stdout.write("[specode:non-interactive] AWAITING_USER_CHOICE\n")
-        sys.stdout.flush()
-        raise SystemExit(0)
-    if not value and default >= 0:
-        return default
-    if value.isdigit():
-        selected = int(value) - 1
-        if 0 <= selected < len(options):
-            return selected
-    print("Invalid selection.", file=sys.stderr)
-    return choose_numbered(title, options, default)
-
-
-def choose_curses(title: str, options: list[Option], default: int) -> int:
-    def run(stdscr: curses.window) -> int:
-        curses.curs_set(0)
-        current = max(default, 0)
-        while True:
-            stdscr.clear()
-            stdscr.addstr(0, 0, title, curses.A_BOLD)
-            stdscr.addstr(1, 0, "Use ↑/↓ or number keys, then Enter.")
-            row = 3
-            for index, option in enumerate(options):
-                active = index == current
-                attr = curses.A_REVERSE if active else curses.A_NORMAL
-                marker = "›" if active else " "
-                suffix = "  Recommended" if option.recommended else ""
-                stdscr.addstr(row, 0, f"{marker} {index + 1}. {option.label}{suffix}", attr)
-                row += 1
-                if option.description:
-                    stdscr.addstr(row, 5, option.description)
-                    row += 1
-            key = stdscr.getch()
-            if key in (curses.KEY_UP, ord("k")):
-                current = (current - 1) % len(options)
-            elif key in (curses.KEY_DOWN, ord("j")):
-                current = (current + 1) % len(options)
-            elif key in (curses.KEY_ENTER, 10, 13):
-                return current
-            elif ord("1") <= key <= ord(str(min(len(options), 9))):
-                current = key - ord("1")
-                return current
-
-    return curses.wrapper(run)
+    sys.stdout.write(prompt)
+    sys.stdout.write("\n")
+    sys.stdout.write("[specode:non-interactive] 选项已就绪：请把上方选项原样转发给用户，并在对话中等待编号回复。\n")
+    sys.stdout.write("[specode:non-interactive] AWAITING_USER_CHOICE\n")
+    sys.stdout.flush()
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Interactive selector for specode confirmations.")
+    parser = argparse.ArgumentParser(description="Selector emitter for specode confirmations (non-interactive).")
     parser.add_argument("--title", required=True)
     parser.add_argument("--option", action="append", required=True, help="label::description::recommended")
-    parser.add_argument("--json", action="store_true", help="Print selected option as JSON.")
+    parser.add_argument("--json", action="store_true", help="Used with --print-default: emit JSON.")
     parser.add_argument("--default-index", type=int, help="1-based default index.")
-    parser.add_argument("--no-curses", action="store_true", help="Force numbered prompt mode.")
+    parser.add_argument("--no-curses", action="store_true", help="No-op; retained for back-compat.")
     parser.add_argument("--print-default", action="store_true", help="Print the default selection without prompting.")
     args = parser.parse_args()
 
@@ -119,14 +85,9 @@ def main() -> int:
         print_result(default, options[default], args.json)
         return 0
 
-    if not sys.stdin.isatty() or not sys.stdout.isatty() or args.no_curses:
-        selected = choose_numbered(args.title, options, default)
-    else:
-        selected = choose_curses(args.title, options, default)
-    print_result(selected, options[selected], args.json)
+    emit_options(args.title, options, default)
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
