@@ -34,15 +34,15 @@
 
 | Flag | Action |
 |---|---|
-| `--set-vault <path>` | `python3 scripts/spec_vault.py set --vault <path>` |
-| `--set-root <path>` | `python3 scripts/spec_vault.py set --root <path>` |
-| `--detect-vault` | `python3 scripts/spec_vault.py detect` |
-| `--vault-status` | `python3 scripts/spec_vault.py get` |
+| `--set-vault <path>` | `sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/spec_vault.py set --vault <path>` |
+| `--set-root <path>` | `sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/spec_vault.py set --root <path>` |
+| `--detect-vault` | `sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/spec_vault.py detect` |
+| `--vault-status` | `sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/spec_vault.py get` |
 | `-h` / `--help` | Output `references/help-output.md` 第一个 ```text``` 围栏块 verbatim (Fast Path — see SKILL.md §Help Output) |
 | `--persist <req>` | `spec_init.py --persistent`, then start workflow |
-| `--freeform` | `python3 scripts/spec_sync.py freeform on` |
-| `--strict` | `python3 scripts/spec_sync.py freeform off` |
-| `--sync-status` | `python3 scripts/spec_sync.py status` |
+| `--freeform` | `sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/spec_sync.py freeform on` |
+| `--strict` | `sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/spec_sync.py freeform off` |
+| `--sync-status` | `sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/spec_sync.py status` |
 
 Sub-flag dispatch 由模型按本表执行，不进入 intake 流程。`-h` / `--vault-status` / `--detect-vault` / `--sync-status` 走 **Fast Path**（详见 SKILL.md §Help Output）—— 单文件读取或单脚本调用，输出 verbatim，不思考、不解释。
 

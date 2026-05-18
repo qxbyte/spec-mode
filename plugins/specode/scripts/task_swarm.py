@@ -35,6 +35,13 @@ import task_swarm_writeback as wb_mod  # noqa: E402
 
 RUNS_DIRNAME = ".task-swarm"
 
+# Emitted commands consumed by the orchestrating model (run via Bash). Use the
+# python launcher so Windows hosts that only ship `python` / `py` still work.
+SELF_CMD = (
+    "sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh "
+    "${CLAUDE_PLUGIN_ROOT}/scripts/" + Path(__file__).name
+)
+
 
 # ---------- run discovery ----------
 
@@ -107,7 +114,7 @@ def cmd_init(args: argparse.Namespace) -> int:
             for s in state["stages"]
         ],
         "warnings": state.get("warnings") or [],
-        "next": f"python3 {Path(__file__).name} next --run {run_id}",
+        "next": f"{SELF_CMD} next --run {run_id}",
     })
     return 0
 
@@ -176,14 +183,14 @@ def cmd_next(args: argparse.Namespace) -> int:
             "workspace": str(ws),
             "prompt_file": str(task_md),
             "after_fork": (
-                f"python3 {Path(__file__).name} parse "
+                f"{SELF_CMD} parse "
                 f"--run {state['run_id']} --stage {stage_num} --role {role} --round {round_no}"
             ),
         })
 
     elif action.kind == "writeback":
         payload["cmd"] = (
-            f"python3 {Path(__file__).name} writeback "
+            f"{SELF_CMD} writeback "
             f"--run {state['run_id']} --stage {payload['stage']}"
         )
 
@@ -239,7 +246,7 @@ def cmd_parse(args: argparse.Namespace) -> int:
         )
     else:
         result["advance_cmd"] = (
-            f"python3 {Path(__file__).name} advance "
+            f"{SELF_CMD} advance "
             f"--run {state_mod.load_state(run_dir)['run_id']} "
             f"--stage {args.stage} --role {args.role} --round {args.round} "
             f"--judgment {result['judgment']}"
@@ -294,7 +301,7 @@ def cmd_advance(args: argparse.Namespace) -> int:
         "rounds": stage["rounds"],
         "last": stage["last"],
         "fail_reason": stage.get("fail_reason"),
-        "next": f"python3 {Path(__file__).name} next --run {state['run_id']}",
+        "next": f"{SELF_CMD} next --run {state['run_id']}",
     })
     return 0
 
@@ -384,7 +391,7 @@ def cmd_writeback(args: argparse.Namespace) -> int:
         "stage": stage["num"],
         "phase": stage["phase"],
         "written": True,
-        "next": f"python3 {Path(__file__).name} next --run {state['run_id']}",
+        "next": f"{SELF_CMD} next --run {state['run_id']}",
     }
     if warnings:
         payload["warnings"] = warnings

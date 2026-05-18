@@ -35,7 +35,7 @@ These rules are checked at **every turn** of every specode session. Never violat
 
 3. ⛔ **tasks.md 测试要点 follow-mode.** `requirements.md` or `bugfix.md` modified → update the `## 测试要点` section of `tasks.md` in the **same turn**, derived from the new SHALL statements. This is INV-4 (enforced at `Stop`): touching requirements/bugfix without touching tasks.md → hook denies the turn.
 
-4. ⛔ **Write-before-verify-lock.** Before any `Edit`/`Write` on a spec document, call `python3 scripts/spec_session.py verify-lock <spec-dir> --session <id>`. Returns `evicted` → stop work immediately and tell the user the spec was taken over by another session.
+4. ⛔ **Write-before-verify-lock.** Before any `Edit`/`Write` on a spec document, call `sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/spec_session.py verify-lock <spec-dir> --session <id>`. Returns `evicted` → stop work immediately and tell the user the spec was taken over by another session.
 
 5. ⛔ **Phase gate compliance.** No skipping confirmation steps. No auto-selecting at gates. No "this seems simple, let's skip ahead". Commands are absolute; the assistant's judgment cannot override them.
 

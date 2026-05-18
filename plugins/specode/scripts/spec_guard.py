@@ -239,7 +239,8 @@ def _render_task_swarm_block(project_root: Path) -> str:
             ifl = s["in_flight"]
             in_flight.append(f"stage {s['num']} {ifl['role']} r{ifl['round']}")
     next_hint = (
-        f"python3 ${{CLAUDE_PLUGIN_ROOT}}/scripts/task_swarm.py next --run {state['run_id']}"
+        f"sh ${{CLAUDE_PLUGIN_ROOT}}/scripts/run.sh "
+        f"${{CLAUDE_PLUGIN_ROOT}}/scripts/task_swarm.py next --run {state['run_id']}"
     )
     summary_lines.append("--- task-swarm ---")
     summary_lines.append(f"run:           {state['run_id']}")

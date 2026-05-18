@@ -12,7 +12,7 @@ argument-hint: "[<spec-dir>/tasks.md] [--parallel N] [--max-rounds N]"
 ### 1. 初始化（只跑一次）
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/task_swarm.py init \
+sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/task_swarm.py init \
   --tasks <tasks.md 绝对路径> \
   [--parallel N] [--max-rounds N]
 ```
@@ -28,7 +28,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/task_swarm.py init \
 #### 2.1 拿下一步指令
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/task_swarm.py next --run <run_id>
+sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/task_swarm.py next --run <run_id>
 ```
 
 返回 `{"action": "fork|writeback|wait|done", ...}`。
@@ -48,14 +48,14 @@ Task(
 subagent 返回后**立刻**：
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/task_swarm.py parse \
+sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/task_swarm.py parse \
   --run <run_id> --stage <json.stage> --role <json.role> --round <json.round>
 ```
 
 拿到 `{"judgment": "...", ...}`，再 advance：
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/task_swarm.py advance \
+sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/task_swarm.py advance \
   --run <run_id> --stage <json.stage> --role <json.role> --round <json.round> \
   --judgment <parse.judgment>
 ```
@@ -67,7 +67,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/task_swarm.py advance \
 **`action == "writeback"`**：
 
 ```bash
-bash <json.cmd>     # 即: python3 ... task_swarm.py writeback --run <run_id> --stage N
+bash <json.cmd>     # 即: sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/task_swarm.py writeback --run <run_id> --stage N
 ```
 
 脚本内部已处理 verify-lock + heartbeat + 行级安全 Edit。**不要**自己 Edit tasks.md。

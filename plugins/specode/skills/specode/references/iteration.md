@@ -85,7 +85,7 @@ iteration                                  ← 默认停留状态
 文档约定：在 acceptance 阶段所有 required checklist 行结论=通过后，用户输入 `/spec-accept` 或交互式选择"验收通过"，agent 调：
 
 ```bash
-python3 scripts/spec_session.py iterate <spec-dir>
+sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/spec_session.py iterate <spec-dir>
 ```
 
 将 phase 置为 `iteration`、`iterationRound` +1。

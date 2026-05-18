@@ -162,7 +162,7 @@ Before editing code:
 2. **Three-check write guard** (see SKILL.md §Multi-Window + Lock): specId, boundary, lock
 3. Load every file in that spec directory only
 4. Find target task or next pending required task
-5. **Heartbeat**: `python3 scripts/spec_session.py heartbeat <spec-dir>`
+5. **Heartbeat**: `sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/spec_session.py heartbeat <spec-dir>`
 6. Update task marker `[~]`
 7. Implement only the linked scope
 8. Run validation
@@ -202,7 +202,7 @@ Final acceptance must include:
 
 When all required tasks 已完成且 `## 测试要点` 所有 checkbox 均 `[x]`, agent runs the **验收通过** selector from `references/prompts.md`:
 
-- `验收通过` → run `python3 scripts/spec_session.py iterate <spec-dir>` → `iterationRound` 自增、phase 变为 `iteration`
+- `验收通过` → run `sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/spec_session.py iterate <spec-dir>` → `iterationRound` 自增、phase 变为 `iteration`
 - `继续修改` → 留在 `acceptance` 阶段补测试点或回滚到 `implementation`
 
 ## 9. `/continue` — Context Loading + Multi-Window
@@ -217,10 +217,10 @@ When all required tasks 已完成且 `## 测试要点` 所有 checkbox 均 `[x]`
 
 Steps:
 
-1. Resolve configured root: `python3 scripts/spec_vault.py get --json --configured-only`
+1. Resolve configured root: `sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/spec_vault.py get --json --configured-only`
    - If no configured root → ask user to run `/spec --set-vault` or `/spec --set-root` and stop
-2. List specs: `python3 scripts/spec_session.py list-specs --root <root> --json`
-3. List sessions: `python3 scripts/spec_session.py list --root <root> --json`
+2. List specs: `sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/spec_session.py list-specs --root <root> --json`
+3. List sessions: `sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/spec_session.py list --root <root> --json`
 4. Present using **Template C — List + Numeric Selection** in `references/prompts.md` (三段固定：当前会话 / 其他窗口 / 可继续的全部 specs；锁状态用固定词；结束语固定)
 5. After user picks → run 9.2 with that slug
 
@@ -233,14 +233,14 @@ Steps:
 Steps:
 
 1. Resolve `spec_dir = <root>/<slug>`
-2. `python3 scripts/spec_session.py acquire <spec-dir> --session <id>`
+2. `sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/spec_session.py acquire <spec-dir> --session <id>`
    - **Exit 0** → owned, proceed to step 3
    - **Exit 4 (LockHeld)** → 输出锁状态摘要，运行 **`/continue` 接管** 选择器（见 `references/prompts.md`）
      - `强制接管` → `acquire --force`, warn that previous session was evicted
      - `只读查看` → skip acquire, set read-only flag; do **not** update active-pointer's specSlug binding
      - `取消` → exit
-3. `python3 scripts/spec_session.py load <spec-dir> --session <id>` — capture output
-4. `python3 scripts/spec_session.py continue <spec-dir> --session <id>` — bind session, write active pointer (skipped in read-only)
+3. `sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/spec_session.py load <spec-dir> --session <id>` — capture output
+4. `sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/spec_session.py continue <spec-dir> --session <id>` — bind session, write active pointer (skipped in read-only)
 5. Present loaded context:
 
 ```

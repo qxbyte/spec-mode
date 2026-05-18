@@ -56,10 +56,10 @@
 ## spec_vault.py 命令参考
 
 ```text
-python3 scripts/spec_vault.py detect           ← 列出已安装的 vault，未检测到时给出手动指定提示
-python3 scripts/spec_vault.py set --vault <p>  ← 绑定 vault（写入 config.json）
-python3 scripts/spec_vault.py set --root <p>   ← 直接指定根目录（写入 config.json）
-python3 scripts/spec_vault.py get              ← 显示当前解析到的根目录及来源
+sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/spec_vault.py detect           ← 列出已安装的 vault，未检测到时给出手动指定提示
+sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/spec_vault.py set --vault <p>  ← 绑定 vault（写入 config.json）
+sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/spec_vault.py set --root <p>   ← 直接指定根目录（写入 config.json）
+sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/spec_vault.py get              ← 显示当前解析到的根目录及来源
 ```
 
 `set --vault <p>` 自动将 spec root 设为 `<p>/spec-in/<os>-<user>/specs`。
