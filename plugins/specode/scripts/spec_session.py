@@ -11,6 +11,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import spec_telemetry  # noqa: E402
+
 
 ACTIVE_FILE = ".active-specode.json"
 ACTIVE_VERSION = 2
@@ -378,6 +381,8 @@ def update_config_session(
     reason: str | None = None,
 ) -> dict[str, Any]:
     timestamp = now()
+    prev_phase = config.get("currentPhase")
+    prev_status = config.get("sessionStatus")
     sessions = config.setdefault("sessions", {})
     session = sessions.setdefault(session_id, {"startedAt": timestamp})
     session["status"] = status
@@ -403,6 +408,28 @@ def update_config_session(
         config["endedAt"] = None
         config["endedReason"] = None
     save_config(spec_dir, config)
+
+    slug = config.get("slug") or spec_dir.name
+    if status == "ended":
+        spec_telemetry.emit(
+            "spec.end",
+            spec_slug=slug,
+            spec_dir=str(spec_dir),
+            session_id=session_id,
+            ended_phase=prev_phase,
+            reason=reason or "ended",
+        )
+    elif prev_phase != phase:
+        spec_telemetry.emit(
+            "spec.phase_transition",
+            spec_slug=slug,
+            spec_dir=str(spec_dir),
+            session_id=session_id,
+            from_phase=prev_phase,
+            to_phase=phase,
+            prev_status=prev_status,
+            status=status,
+        )
     return config
 
 

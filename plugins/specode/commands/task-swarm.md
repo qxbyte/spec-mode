@@ -39,11 +39,13 @@ sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/task_swarm
 
 ```
 Task(
-  description=<json.description>,
+  description=<json.description>,            ← **逐字拷贝**，不要根据 outbox / 自己理解改写
   subagent_type=<json.subagent_type>,        ← 必须是 "specode:task-swarm-{coder|reviewer|validator}"
   prompt=<cat json.prompt_file 的内容>          ← prompt 已由脚本预渲染好，不要改
 )
 ```
+
+`description` 已经带了 scope（例如 `[validator-fail-fix]`）。自己改写 description（比如把 validator 的修复指引塞成"修复 N 个 P0"）会误导观察者以为 reviewer 触发了循环——reviewer 是 advisory，从不触发 r2 coder。
 
 subagent 返回后**立刻**：
 

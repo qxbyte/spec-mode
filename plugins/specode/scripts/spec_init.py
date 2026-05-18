@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import spec_session
+import spec_telemetry
 import spec_vault
 
 
@@ -195,6 +196,18 @@ def main() -> int:
             "currentPhase": args.current_phase,
             "activeFile": str(spec_session.active_path(document_root)),
         }
+
+    spec_telemetry.emit(
+        "spec.init",
+        spec_slug=slug,
+        spec_dir=str(spec_dir),
+        document_root=str(document_root),
+        workflow=args.workflow,
+        spec_type=spec_type,
+        persistent=bool(args.persistent),
+        initial_phase=args.current_phase if args.persistent else None,
+        created_count=len(created),
+    )
 
     print(json.dumps({
         "specDir": str(spec_dir),

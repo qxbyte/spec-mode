@@ -87,6 +87,12 @@ Once loaded:
 
 Hook activity logs to `~/.specode/audit/<date>.log` (UTC).
 
+Optional **local telemetry** of workflow events (spec lifecycle, INV
+violations, task-swarm rounds) — disabled by default, enable with
+`SPECODE_TELEMETRY=on`. Events go to a single `~/.specode/telemetry.jsonl`
+(append-only, no remote upload, no daily rotation — grep-friendly). Run
+`python3 scripts/spec_state.py telemetry-summary` for a local aggregate.
+
 ### Uninstall
 
 ```sh

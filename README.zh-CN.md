@@ -81,6 +81,8 @@ codebuddy --plugin-dir ./specode/plugins/specode
 
 Hook 行为日志写入 `~/.specode/audit/<date>.log`（UTC）。
 
+可选的**本地 telemetry**（记录 spec 生命周期、INV 触发、task-swarm 收敛轮数等流程事件）——默认关闭，需要 `SPECODE_TELEMETRY=on` 启用。事件写入单文件 `~/.specode/telemetry.jsonl`（append-only，不上报远端，不按日切，方便 grep）。运行 `python3 scripts/spec_state.py telemetry-summary` 做本地聚合分析。
+
 ### 卸载
 
 ```sh

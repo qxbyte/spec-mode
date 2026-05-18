@@ -18,9 +18,12 @@ import json
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import spec_telemetry  # noqa: E402
 
 
 USER_CONFIG = Path.home() / ".config/specode/config.json"
@@ -379,6 +382,116 @@ def _cmd_audit_summary(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_telemetry_summary(args: argparse.Namespace) -> int:
+    if not spec_telemetry.is_enabled() and not args.force:
+        print(
+            f"(telemetry is disabled — set {spec_telemetry._ENV_FLAG}=on to record events,\n"
+            f" or pass --force to read the existing file anyway)",
+            file=sys.stderr,
+        )
+    path = spec_telemetry._env_path()
+    rotated = spec_telemetry._rotated_for(path)
+    if not path.exists() and not rotated.exists():
+        print(f"(no telemetry file at {path})", file=sys.stderr)
+        return 0
+
+    cutoff: Optional[datetime] = None
+    if args.days and args.days > 0:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=args.days)
+
+    by_event: dict[str, int] = {}
+    by_inv: dict[str, int] = {}
+    spec_phase_transitions: dict[str, int] = {}
+    spec_inv_counts: dict[str, int] = {}
+    swarm_runs: dict[str, dict] = {}
+    total = 0
+
+    for rec in spec_telemetry.iter_records(path):
+        if cutoff is not None:
+            try:
+                ts = datetime.fromisoformat(rec.get("ts", ""))
+            except ValueError:
+                ts = None
+            if ts is None or ts < cutoff:
+                continue
+        total += 1
+        ev = rec.get("event", "?")
+        by_event[ev] = by_event.get(ev, 0) + 1
+
+        if ev == "spec.phase_transition":
+            slug = rec.get("spec_slug") or "?"
+            spec_phase_transitions[slug] = spec_phase_transitions.get(slug, 0) + 1
+        elif ev == "inv.violation":
+            inv = rec.get("inv") or "?"
+            by_inv[inv] = by_inv.get(inv, 0) + 1
+            slug = rec.get("spec_slug") or "?"
+            spec_inv_counts[slug] = spec_inv_counts.get(slug, 0) + 1
+        elif ev == "swarm.run_start":
+            rid = rec.get("run_id") or "?"
+            swarm_runs.setdefault(rid, {})["start"] = rec
+        elif ev == "swarm.stage_done":
+            rid = rec.get("run_id") or "?"
+            run = swarm_runs.setdefault(rid, {})
+            run.setdefault("stages_done", []).append(rec)
+        elif ev == "swarm.run_end":
+            rid = rec.get("run_id") or "?"
+            swarm_runs.setdefault(rid, {})["end"] = rec
+
+    if args.json:
+        rounds_per_stage: list[int] = []
+        for run in swarm_runs.values():
+            for s in run.get("stages_done") or []:
+                rounds = s.get("rounds") or {}
+                total_rounds = sum(v for v in rounds.values() if isinstance(v, int))
+                if total_rounds:
+                    rounds_per_stage.append(total_rounds)
+        avg = (sum(rounds_per_stage) / len(rounds_per_stage)) if rounds_per_stage else 0
+        print(json.dumps({
+            "total_records": total,
+            "by_event": by_event,
+            "by_inv": by_inv,
+            "phase_transitions_by_spec": spec_phase_transitions,
+            "inv_violations_by_spec": spec_inv_counts,
+            "swarm_runs": len(swarm_runs),
+            "swarm_avg_total_rounds_per_stage": round(avg, 2),
+        }, ensure_ascii=False, indent=2))
+        return 0
+
+    print(f"telemetry summary: {total} record(s) from {path}")
+    if cutoff is not None:
+        print(f"  window: last {args.days} day(s)")
+    print("\nby event:")
+    for k, v in sorted(by_event.items(), key=lambda x: (-x[1], x[0])):
+        print(f"  {v:6d}  {k}")
+    if by_inv:
+        print("\ninvariant violations (top):")
+        for k, v in sorted(by_inv.items(), key=lambda x: (-x[1], x[0])):
+            print(f"  {v:6d}  {k}")
+    if spec_phase_transitions:
+        print("\nphase transitions per spec (top 10):")
+        ranked = sorted(spec_phase_transitions.items(), key=lambda x: (-x[1], x[0]))[:10]
+        for slug, count in ranked:
+            print(f"  {count:6d}  {slug}")
+    if spec_inv_counts:
+        print("\ninv violations per spec (top 10):")
+        ranked = sorted(spec_inv_counts.items(), key=lambda x: (-x[1], x[0]))[:10]
+        for slug, count in ranked:
+            print(f"  {count:6d}  {slug}")
+    if swarm_runs:
+        rounds_per_stage: list[int] = []
+        for run in swarm_runs.values():
+            for s in run.get("stages_done") or []:
+                rounds = s.get("rounds") or {}
+                total_rounds = sum(v for v in rounds.values() if isinstance(v, int))
+                if total_rounds:
+                    rounds_per_stage.append(total_rounds)
+        avg = (sum(rounds_per_stage) / len(rounds_per_stage)) if rounds_per_stage else 0
+        print(f"\ntask-swarm: {len(swarm_runs)} run(s)")
+        print(f"  avg total rounds per converged/failed stage: {avg:.2f}")
+        print(f"  stages with recorded rounds: {len(rounds_per_stage)}")
+    return 0
+
+
 def main(argv) -> int:
     p = argparse.ArgumentParser(prog="spec_state.py")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -400,6 +513,10 @@ def main(argv) -> int:
     asum = sub.add_parser("audit-summary", help="Aggregate event/decision counts")
     asum.add_argument("--days", type=int, default=7, help="how many most-recent daily logs to scan (default 7; 0=all)")
     asum.add_argument("--show-deny", type=int, default=10, help="how many recent deny entries to include (default 10)")
+    tsum = sub.add_parser("telemetry-summary", help="Aggregate ~/.specode/telemetry.jsonl (opt-in)")
+    tsum.add_argument("--days", type=int, default=0, help="restrict to last N days (default 0=all)")
+    tsum.add_argument("--json", action="store_true", help="emit raw aggregates as JSON")
+    tsum.add_argument("--force", action="store_true", help="read the file even if telemetry is disabled")
     args = p.parse_args(argv)
     return {
         "status": _cmd_status,
@@ -408,6 +525,7 @@ def main(argv) -> int:
         "demo-deactivate": _cmd_demo_deactivate,
         "audit-tail": _cmd_audit_tail,
         "audit-summary": _cmd_audit_summary,
+        "telemetry-summary": _cmd_telemetry_summary,
     }[args.cmd](args)
 
 

@@ -26,6 +26,7 @@ from typing import Optional
 SCRIPTS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS_DIR))
 
+import spec_telemetry  # noqa: E402
 import task_swarm_parse_md as plan_mod  # noqa: E402
 import task_swarm_state as state_mod  # noqa: E402
 import task_swarm_outbox as outbox_mod  # noqa: E402
@@ -103,6 +104,17 @@ def cmd_init(args: argparse.Namespace) -> int:
     pointer_dir.mkdir(parents=True, exist_ok=True)
     (pointer_dir / "active-run").write_text(run_id, encoding="utf-8")
 
+    spec_telemetry.emit(
+        "swarm.run_start",
+        run_id=run_id,
+        spec_dir=str(spec_dir),
+        spec_slug=spec_dir.name,
+        project_root=str(project_root),
+        stage_count=len(state["stages"]),
+        max_rounds=int(args.max_rounds),
+        parallel=int(args.parallel),
+    )
+
     _print_json({
         "run_id": run_id,
         "run_dir": str(run_dir),
@@ -179,7 +191,7 @@ def cmd_next(args: argparse.Namespace) -> int:
 
         payload.update({
             "subagent_type": f"specode:task-swarm-{role}",
-            "description": f"阶段 {stage_num} {role}{('-r' + str(round_no)) if round_no > 1 else ''}: {stage['title']}",
+            "description": _fork_description(stage_num, role, round_no, payload.get("scope"), stage["title"]),
             "workspace": str(ws),
             "prompt_file": str(task_md),
             "after_fork": (
@@ -196,6 +208,20 @@ def cmd_next(args: argparse.Namespace) -> int:
 
     _print_json(payload)
     return 0
+
+
+def _fork_description(stage_num: int, role: str, round_no: int, scope: Optional[str], stage_title: str) -> str:
+    """Build the Task description shown in the UI.
+
+    Always include scope when present, so a r2+ coder reads as e.g.
+    "阶段 5 coder-r2 [validator-fail-fix]: 检查点 —— Mascot 独立可控"
+    instead of letting the orchestrator improvise a description that
+    misleadingly mentions "P0" (reviewer terminology) for what is really
+    a validator-fail-fix round.
+    """
+    rstr = f"-r{round_no}" if round_no > 1 else ""
+    scope_str = f" [{scope}]" if scope else ""
+    return f"阶段 {stage_num} {role}{rstr}{scope_str}: {stage_title}"
 
 
 def _max_round_for(state: dict, stage_num: int, role: str) -> int:
@@ -286,6 +312,7 @@ def cmd_advance(args: argparse.Namespace) -> int:
         # If outbox is missing or unreadable, fall through with bare verdict.
         pass
 
+    prev_phase = state_mod.get_stage(state, int(args.stage)).get("phase")
     try:
         stage = state_mod.advance(
             state, int(args.stage), args.role, int(args.round), args.judgment, extra
@@ -295,6 +322,30 @@ def cmd_advance(args: argparse.Namespace) -> int:
         return 2
 
     state_mod.save_state(run_dir, state)
+
+    spec_slug = Path(state["spec_dir"]).name
+    spec_telemetry.emit(
+        "swarm.stage_round",
+        run_id=state["run_id"],
+        spec_slug=spec_slug,
+        stage=stage["num"],
+        role=args.role,
+        round=int(args.round),
+        judgment=args.judgment,
+        phase=stage["phase"],
+        p0_count=extra.get("p0_count"),
+    )
+    if stage["phase"] in {"converged", "failed"} and prev_phase != stage["phase"]:
+        spec_telemetry.emit(
+            "swarm.stage_done",
+            run_id=state["run_id"],
+            spec_slug=spec_slug,
+            stage=stage["num"],
+            phase=stage["phase"],
+            rounds=stage["rounds"],
+            fail_reason=stage.get("fail_reason"),
+        )
+
     _print_json({
         "stage": stage["num"],
         "phase": stage["phase"],
@@ -386,6 +437,30 @@ def cmd_writeback(args: argparse.Namespace) -> int:
 
     state_mod.mark_written_back(state, stage["num"])
     state_mod.save_state(run_dir, state)
+
+    spec_telemetry.emit(
+        "swarm.writeback",
+        run_id=state["run_id"],
+        spec_slug=Path(state["spec_dir"]).name,
+        stage=stage["num"],
+        phase=stage["phase"],
+        rounds=stage["rounds"],
+    )
+
+    # If every stage is in a terminal (written or skipped) state, mark run end.
+    if all(s.get("written_back") or s.get("phase") == "skipped" for s in state["stages"]):
+        counts = {"converged": 0, "failed": 0, "skipped": 0}
+        for s in state["stages"]:
+            counts[s.get("phase", "?")] = counts.get(s.get("phase", "?"), 0) + 1
+        spec_telemetry.emit(
+            "swarm.run_end",
+            run_id=state["run_id"],
+            spec_slug=Path(state["spec_dir"]).name,
+            stage_count=len(state["stages"]),
+            converged=counts.get("converged", 0),
+            failed=counts.get("failed", 0),
+            skipped=counts.get("skipped", 0),
+        )
 
     payload = {
         "stage": stage["num"],

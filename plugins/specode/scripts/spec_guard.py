@@ -23,6 +23,7 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import spec_state  # noqa: E402
 import spec_sync   # noqa: E402
+import spec_telemetry  # noqa: E402
 import task_swarm_guard  # noqa: E402
 
 
@@ -107,6 +108,21 @@ def ok() -> int:
 def deny(msg: str) -> int:
     sys.stderr.write(msg)
     return 2
+
+
+def _emit_violation(inv_id: str, payload: dict, info: Optional[dict], target: Optional[Path], extra: Optional[dict] = None) -> None:
+    fields: dict = {"inv": inv_id}
+    if info:
+        fields["spec_slug"] = info.get("spec_slug")
+        fields["phase"] = info.get("current_phase")
+        fields["session_id"] = info.get("session_id")
+    if target is not None:
+        fields["file"] = str(target)
+    fields["tool"] = payload.get("tool_name")
+    fields["cwd"] = payload.get("cwd") or os.getcwd()
+    if extra:
+        fields.update(extra)
+    spec_telemetry.emit("inv.violation", **fields)
 
 
 def _prefer_session_id() -> str:
@@ -277,6 +293,7 @@ def handle_pre_tool_use(payload: dict) -> int:
             decision, msg = task_swarm_guard.check_inv7_subagent_type(subagent_type)
             if decision == "deny":
                 _audit("PreToolUse", payload, "deny-INV-7", subagent_type)
+                _emit_violation("INV-7", payload, info, None, {"subagent_type": subagent_type})
                 return deny(msg)
             _audit("PreToolUse", payload, "ok-INV-7", subagent_type)
         return ok()
@@ -298,6 +315,7 @@ def handle_pre_tool_use(payload: dict) -> int:
         decision, msg = task_swarm_guard.check_inv8_writes_boundary(target, subagent_ws, project_root, spec_dir)
         if decision == "deny":
             _audit("PreToolUse", payload, "deny-INV-8", str(target))
+            _emit_violation("INV-8", payload, info, target)
             return deny(msg)
         # Inside a subagent workspace — internal swarm artifact, not project
         # source. Bypass spec_sync INV-1/INV-6 checks.
@@ -320,6 +338,7 @@ def handle_pre_tool_use(payload: dict) -> int:
                 decision, msg = task_swarm_guard.check_inv9_tasks_md_diff(full_text, new_text)
                 if decision == "deny":
                     _audit("PreToolUse", payload, "deny-INV-9", str(target))
+                    _emit_violation("INV-9", payload, info, target)
                     return deny(msg)
             except OSError:
                 pass
@@ -331,6 +350,7 @@ def handle_pre_tool_use(payload: dict) -> int:
                 decision, msg = task_swarm_guard.check_inv9_tasks_md_diff(old_text, new_text)
                 if decision == "deny":
                     _audit("PreToolUse", payload, "deny-INV-9", str(target))
+                    _emit_violation("INV-9", payload, info, target)
                     return deny(msg)
             except OSError:
                 pass
@@ -348,6 +368,7 @@ def handle_pre_tool_use(payload: dict) -> int:
             ledger["last_violation"] = {"id": "INV-3", "file": str(target), "at": spec_sync._now()}
             spec_sync.write_ledger(spec_dir, ledger)
             _audit("PreToolUse", payload, "deny-INV-3", str(target))
+            _emit_violation("INV-3", payload, info, target)
             return deny(info_msg)
         _audit("PreToolUse", payload, f"ok-spec-doc[{info_msg}]", str(target))
         return ok()
@@ -364,6 +385,7 @@ def handle_pre_tool_use(payload: dict) -> int:
         }
         spec_sync.write_ledger(spec_dir, ledger)
         _audit("PreToolUse", payload, "deny-INV-6", f"phase={current_phase} target={target}")
+        _emit_violation("INV-6", payload, info, target)
         return deny(msg)
 
     # Then INV-1 (relaxable by freeform).
@@ -372,6 +394,7 @@ def handle_pre_tool_use(payload: dict) -> int:
         ledger["last_violation"] = {"id": "INV-1", "file": str(target), "at": spec_sync._now()}
         spec_sync.write_ledger(spec_dir, ledger)
         _audit("PreToolUse", payload, "deny-INV-1", str(target))
+        _emit_violation("INV-1", payload, info, target)
         return deny(msg)
 
     _audit("PreToolUse", payload, "ok-code-allowed", str(target))
@@ -425,6 +448,8 @@ def handle_stop(payload: dict) -> int:
         spec_sync.write_ledger(spec_dir, ledger)
         body = "\n\n".join(v["msg"] for v in violations)
         _audit("Stop", payload, "deny-" + "+".join(v["id"] for v in violations), "")
+        for v in violations:
+            _emit_violation(v["id"], payload, info, None)
         return deny(body)
 
     # Pass: reset turn counters (but keep turn_id until next UserPromptSubmit).

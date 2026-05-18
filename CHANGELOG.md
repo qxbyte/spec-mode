@@ -2,7 +2,42 @@
 
 ## Unreleased
 
-_no entries yet_
+### Added
+
+- **Local-only telemetry** (`~/.specode/telemetry.jsonl`): opt-in via
+  `SPECODE_TELEMETRY=on`, append-only single file so `grep` / `jq` stay
+  trivial. **Absolutely no remote upload** — purely for the user's own
+  inspection of flow execution.
+  - Events: `spec.init` / `spec.phase_transition` / `spec.end` /
+    `inv.violation` (INV-1..9, with `spec_slug` + `phase`) /
+    `swarm.run_start` / `swarm.stage_round` / `swarm.stage_done` /
+    `swarm.writeback` / `swarm.run_end`.
+  - Records carry `spec_slug` / `cwd` / `run_id` so you can aggregate per
+    spec or per project.
+  - Size cap defaults to 50 MB (overridable via
+    `SPECODE_TELEMETRY_MAX_BYTES`); rotates to `telemetry.jsonl.0` once.
+  - All IO errors are swallowed — telemetry never breaks a hook.
+- `python3 scripts/spec_state.py telemetry-summary [--days N] [--json]`
+  aggregates the telemetry file locally: counts per event, INV violations
+  top-list, per-spec phase-transition / violation totals, and task-swarm
+  average rounds per converged/failed stage.
+
+### Fixed
+
+- **task-swarm fork description now carries scope** (`[validator-fail-fix]`
+  / `[advisory]` / `[re-run]`). Previously a checkpoint stage's r2 coder
+  was labelled `阶段 N coder-r2: <title>` with no scope, and the
+  orchestrator commonly improvised a description like "修复 N 个 P0" off
+  the validator outbox — reading as if the reviewer had triggered a fix
+  loop (reviewer is advisory and never does). With scope baked in, the
+  Task UI now reads e.g. `阶段 5 coder-r2 [validator-fail-fix]: ...` and
+  `commands/task-swarm.md` explicitly tells the orchestrator to copy
+  `<json.description>` verbatim.
+- **validator agent now forbidden from using P0/P1 severity labels** in
+  fix guidance (`agents/task-swarm-validator.md`). Those tags are
+  reviewer terminology; validator fail is itself blocking. This prevents
+  the orchestrator from observing "(P0)" markers in validator output and
+  carrying them into the fork description.
 
 ## 0.3.0 (2026-05-18)
 

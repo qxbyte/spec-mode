@@ -440,3 +440,25 @@ def test_load_state_warns_on_future_version():
         assert any("newer than runtime" in w for w in loaded.get("warnings", []))
     finally:
         _cleanup(ws)
+
+
+def test_fork_description_r1_no_scope():
+    """First round (round=1) gets plain '阶段 N role: title' without -rN or [scope]."""
+    desc = TS._fork_description(3, "coder", 1, None, "实现 A")
+    assert desc == "阶段 3 coder: 实现 A"
+
+
+def test_fork_description_includes_scope_for_validator_fail_fix():
+    """r2 coder triggered by validator fail must show [validator-fail-fix] so the
+    orchestrator can't mis-narrate it as a reviewer P0 fix loop."""
+    desc = TS._fork_description(5, "coder", 2, "validator-fail-fix", "检查点 — Mascot 独立可控")
+    assert "-r2" in desc
+    assert "[validator-fail-fix]" in desc
+    assert "检查点 — Mascot 独立可控" in desc
+    assert "P0" not in desc
+
+
+def test_fork_description_reviewer_advisory_scope():
+    desc = TS._fork_description(1, "reviewer", 1, "advisory", "实现 A")
+    assert "reviewer" in desc
+    assert "[advisory]" in desc
