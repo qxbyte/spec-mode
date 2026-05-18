@@ -52,15 +52,28 @@ Within an active persistent session, route natural-language follow-ups via docum
 | Acceptance feedback | Update task/review state in `tasks.md`（含 `## 测试要点` 节） |
 | User said "/spec-accept" or "验收通过" | Run `spec_session.py iterate <spec-dir>` → phase becomes `iteration` |
 
-## 1.2 Spec Slug Generation (Agent Responsibility)
+## 1.2 Mandatory Entry — `spec_init.py` is the ONLY way to create a new spec
+
+⛔ **Iron Rule #1 (see SKILL.md).** A new spec — whether one-shot `/spec` or `/spec --persist` — is created exclusively by calling `scripts/spec_init.py`. You **MUST NOT**:
+
+- `mkdir` any spec directory yourself
+- `Write` `requirements.md` / `bugfix.md` / `design.md` / `tasks.md` / `.config.json` to a path you constructed
+- Use `<project>/specode/`, `<project>/specs/`, `<cwd>/...`, `~/Git/<x>/...`, or any path you chose
+- Treat phrasing like "在项目下创建"、"在 git 目录下创建一个新项目" as a directive to place spec docs in the project. Those phrases describe **future code location**, not spec-document location.
+
+### Steps (agent responsibility)
 
 `scripts/spec_init.py` **requires `--name <slug>`**. The script does not infer slugs from Chinese — that responsibility falls on the agent:
 
 1. Read the user's requirement description
 2. Produce a short semantic English slug, lowercase, hyphen-separated, ≤64 chars (e.g. `login-password-rule`, `undo-redo`, `dark-mode`)
-3. Call `spec_init.py --name <slug> --requirement-name "<中文显示名>" --source-text "..."`
+3. Call `sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/spec_init.py --name <slug> --requirement-name "<中文显示名>" --source-text "..."`
+4. The script prints the resolved `specDir` (under doc_root, never under cwd). Fill content into the files **it created**.
 
-If `--name` is missing or normalizes to empty, `spec_init.py` exits with `invalid_name`.
+### Failure modes (do NOT improvise)
+
+- Exit code with `{"error": "no_spec_root", ...}` → stop and surface the message verbatim. Tell the user to run `/spec --set-vault <p>` or `/spec --set-root <p>`. **Do not** invent a fallback location.
+- Exit code with `{"error": "invalid_name", ...}` → `--name` was missing or normalized to empty. Pick a different slug and retry; do NOT bypass the script.
 
 ## 2. Workflow Choice Prompt
 

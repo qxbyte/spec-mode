@@ -29,17 +29,24 @@ Do **not** activate for ordinary coding, planning, requirements, design, task li
 
 These rules are checked at **every turn** of every specode session. Never violate them. Never defer them. If the user pushes back, acknowledge — then comply with the rule first, discuss after.
 
-1. ⛔ **Document-first.** Any change to requirements / design / tasks discussed in chat MUST be written to the corresponding spec document **in the same turn**, *before* further discussion or implementation. Verbal-only changes are invisible to the next session and silently drift from the persisted spec.
+1. ⛔ **New spec via `spec_init.py` only — no manual scaffolding.** Any new spec (one-shot `/spec` or `/spec --persist`) MUST be created by calling `spec_init.py --name <slug> --requirement-name "<显示名>" --source-text "<需求>"`. The script alone resolves the document root (three-tier, see §Document Root Resolution) and writes `.config.json`. You **MUST NOT**:
+   - `mkdir` a spec directory anywhere yourself (not in cwd, not under `~/Git/<x>/`, not in any path you constructed)
+   - `Write` `requirements.md` / `bugfix.md` / `design.md` / `tasks.md` / `.config.json` to a path you chose
+   - Interpret phrasing like "在项目下创建"、"在 git 目录下创建一个新项目"、"放本地" as a directive to place spec docs in the project / cwd. Those phrases describe **future code location**, not spec-document location. Spec docs always live under the resolved doc_root; code lives wherever the user wants. **Never conflate the two.**
 
-2. ⛔ **Post-`/continue` sync — 非常重要.** After `/continue` you are resuming an **already-landed** spec. **Every** subsequent adjustment to requirements or design — even a single clarifying sentence from the user — MUST be reflected in `requirements.md` / `bugfix.md` / `design.md` / `tasks.md`, **in the same turn**. Do not wait for "later", do not batch into "next round", do not say "I'll update it after the code". Write **now**. The user said it → write it. The next session can only see what was persisted; chat is ephemeral.
+   Workflow: derive slug → call `spec_init.py` → fill content into the files it created. If `spec_init.py` exits with `no_spec_root`, **stop and surface the guidance verbatim**; do not invent a fallback location.
 
-3. ⛔ **tasks.md 测试要点 follow-mode.** `requirements.md` or `bugfix.md` modified → update the `## 测试要点` section of `tasks.md` in the **same turn**, derived from the new SHALL statements. This is INV-4 (enforced at `Stop`): touching requirements/bugfix without touching tasks.md → hook denies the turn.
+2. ⛔ **Document-first.** Any change to requirements / design / tasks discussed in chat MUST be written to the corresponding spec document **in the same turn**, *before* further discussion or implementation. Verbal-only changes are invisible to the next session and silently drift from the persisted spec.
 
-4. ⛔ **Write-before-verify-lock.** Before any `Edit`/`Write` on a spec document, call `sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/spec_session.py verify-lock <spec-dir> --session <id>`. Returns `evicted` → stop work immediately and tell the user the spec was taken over by another session.
+3. ⛔ **Post-`/continue` sync — 非常重要.** After `/continue` you are resuming an **already-landed** spec. **Every** subsequent adjustment to requirements or design — even a single clarifying sentence from the user — MUST be reflected in `requirements.md` / `bugfix.md` / `design.md` / `tasks.md`, **in the same turn**. Do not wait for "later", do not batch into "next round", do not say "I'll update it after the code". Write **now**. The user said it → write it. The next session can only see what was persisted; chat is ephemeral.
 
-5. ⛔ **Phase gate compliance.** No skipping confirmation steps. No auto-selecting at gates. No "this seems simple, let's skip ahead". Commands are absolute; the assistant's judgment cannot override them.
+4. ⛔ **tasks.md 测试要点 follow-mode.** `requirements.md` or `bugfix.md` modified → update the `## 测试要点` section of `tasks.md` in the **same turn**, derived from the new SHALL statements. This is INV-4 (enforced at `Stop`): touching requirements/bugfix without touching tasks.md → hook denies the turn.
 
-6. ⛔ **Forced writes.** Every config / document mutation must be persisted on the spot. When a write fails (IOError / permission / `lock_lost`), abort the operation — never continue with in-memory unpersisted state.
+5. ⛔ **Write-before-verify-lock.** Before any `Edit`/`Write` on a spec document, call `sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/spec_session.py verify-lock <spec-dir> --session <id>`. Returns `evicted` → stop work immediately and tell the user the spec was taken over by another session.
+
+6. ⛔ **Phase gate compliance.** No skipping confirmation steps. No auto-selecting at gates. No "this seems simple, let's skip ahead". Commands are absolute; the assistant's judgment cannot override them.
+
+7. ⛔ **Forced writes.** Every config / document mutation must be persisted on the spot. When a write fails (IOError / permission / `lock_lost`), abort the operation — never continue with in-memory unpersisted state.
 
 These rules trigger detectable signals (lint, `/continue` ⚠ markers, verify-lock exit codes). Treat any of those signals as a regression on your part, not a tool quirk.
 
@@ -76,7 +83,14 @@ Three-tier resolution. **No project fallback, no home fallback.**
 2. `~/.config/specode/config.json` → `obsidianRoot`
 3. Auto-detect Obsidian vault → `<vault>/spec-in/<os>-<user>/specs` (and persist)
 
-All three miss → **hard stop**, output guidance, exit. `/spec` and `/continue` use the **same** resolution. Never create `<project>/specs` or `~/new project/specs`.
+All three miss → **hard stop**, output guidance, exit. `/spec` and `/continue` use the **same** resolution. **Spec documents are NEVER allowed outside the resolved doc_root**:
+
+- ❌ `<project>/specs/`、`<project>/specode/`、`<project>/spec/`、`<project>/<任意名>/`
+- ❌ `~/Git/<x>/specode/`、`~/Git/<x>/specs/`
+- ❌ `<cwd>/specs/`
+- ❌ Any path of your own choosing
+
+The directory name (`specs`, `specode`, anything else) does NOT matter — the **location** (under doc_root or not) is what matters. If the user says "在项目下"、"在这个目录下"、"放本地" referring to where to create the spec, treat that as **misinterpreting code scope as document scope** and clarify: code can live in the project; spec docs must live under the configured doc_root. If no doc_root is configured, run `/spec --set-vault <p>` or `/spec --set-root <p>` first, **not** invent a fallback.
 
 → 详见 `references/obsidian.md`
 
