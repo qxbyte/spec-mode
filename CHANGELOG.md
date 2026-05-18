@@ -4,6 +4,46 @@
 
 _no entries yet_
 
+## 0.3.2 (2026-05-18)
+
+### Fixed
+
+- **`spec_choice.py` hang under CodeBuddy Bash** — observed a single
+  Stop-gate selector running for 1h16m, with multiple zombie selectors
+  accumulating per spec session (one per phase gate). Root cause: TTY-only
+  `input()` / curses paths blocked indefinitely when stdin was a pipe
+  without EOF (CodeBuddy harness behavior). Both paths are now deleted —
+  the script always emits options + `AWAITING_USER_CHOICE` sentinel and
+  exits 0. Physically cannot block on stdin. `--no-curses` flag kept as
+  a no-op for back-compat.
+
+### Added
+
+- **CI static guard against blocking stdin reads** — new
+  `tests/test_no_blocking_io.py` tokenizes every runtime script under
+  `scripts/` and fails on any `input()` / `raw_input()` /
+  `sys.stdin.read*` / `getpass.getpass(` not explicitly whitelisted
+  with a `# stdin-block: <reason>` comment marker. Prevents future
+  regressions of the hang class.
+- **`tests/test_spec_choice.py`** — 9 subprocess-driven tests with
+  `timeout=3s` so a hang is a regression.
+- **SKILL.md Iron Rule #8 — selector via `spec_choice.py` only.**
+  Every phase-gate selector MUST be produced by running the exact
+  `spec_choice.py` command from `references/prompts.md` and relaying
+  its stdout verbatim. Hand-rolling silently drops newer options the
+  script knows about (real observed regression: 任务执行 selector
+  rendered as 3 options because the model wrote them from memory,
+  dropping `用 task-swarm 多 agent 并发`).
+- **SKILL.md Document Output Brevity rule** — when writing or updating
+  a spec doc, do not reprint the full content in chat. Report only:
+  file path, 3-8 section bullets, open questions, next action.
+
+### Notes
+
+- `scripts/spec_guard.py` legitimately reads stdin (hook payload from
+  Claude Code / CodeBuddy, bounded JSON + immediate close) — annotated
+  with `# stdin-block: hook entry point` to satisfy the new scanner.
+
 ## 0.3.1 (2026-05-18)
 
 ### Added
