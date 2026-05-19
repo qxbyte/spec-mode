@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""spec_lint.py — 对当前 spec 目录做轻量 lint（§3.9）。
+"""spec_lint.py — 对当前 spec 目录做轻量 lint。
 
 仅产出 WARNING；所有 lint 一律 exit 0（不阻断模型流程）。
 

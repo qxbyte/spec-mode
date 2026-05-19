@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""task_swarm_state.py — task-swarm 状态机（state.json 单一事实源，§11.7）。
+"""task_swarm_state.py — task-swarm 状态机（state.json 单一事实源；详见 references/task-swarm.md §7）。
 
 负责：
     - state.json 的 load/save（atomic write + fsync）
-    - phase 状态机推进（§11.3）
+    - phase 状态机推进（references/task-swarm.md §3）
     - 死循环检测（连续 3 轮同 fail 签名 → group failed-deadloop）
 
-state.json schema 见 DESIGN §11.7 关键不变量。本模块只管"事实源"，
+state.json schema 见 references/task-swarm.md §7 关键不变量。本模块只管"事实源"，
 派发 / 解析在 task_swarm.py 主 CLI 里。
 
 stdlib-only。
@@ -75,7 +75,7 @@ class StageEntry:
     end_line_no: int = 0
 
 
-# Phase 枚举（同 DESIGN §11.3）
+# Phase 枚举（同 references/task-swarm.md §3）
 PHASES = {
     "init", "coding", "review", "p0-fix",
     "validation", "v-fix", "writeback", "done", "error",
@@ -272,7 +272,7 @@ class StateMachine:
             return
         self.phase = "coding"
         self.round = 1
-        # 设置 in_flight keys（命名规则见 §11.4）
+        # 设置 in_flight keys（命名规则见 references/task-swarm.md §4）
         gi = self.current_group_index
         self.coder_in_flight = [
             f"coder-g{gi + 1}-s{s.number}-r1" for s in self.current_group()

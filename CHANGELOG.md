@@ -4,6 +4,78 @@
 
 _no entries yet_
 
+## 0.9.2 (2026-05-19)
+
+### Removed — `DESIGN.md` 与 `IMPLEMENTATION-AUDIT.md` 从仓库移除
+
+两份文档都不再作为项目产物维护：
+
+- `DESIGN.md`（1515 行 / ~78KB）是 v0.5 → v0.8 重建期的设计文档，
+  写给设计者 / 维护者读，不是最终用户文档。0.8.0 / 0.9.x 系列演进
+  后部分章节已与代码漂移（如 §3.3 sessions schema 字段名、§3.9
+  spec_lint 规则数量），全文同步代价过高。
+- `IMPLEMENTATION-AUDIT.md`（327 行 / ~26KB）是 v0.7.0 时点的一次性
+  对账表，行号引用大多因为代码演进失效，且没有持续维护价值。
+
+历史信息仍可通过 `CHANGELOG.md` + git log 回溯。当前真实代码状态
+看 `SKILL.md` + `references/*.md`（与代码同步演进）。
+
+随之清理：
+
+- `plugins/specode/commands/status.md` —— 引用 `DESIGN.md §3.3` 改为
+  指向 SKILL.md §Session Lifecycle。
+- `plugins/specode/scripts/spec_session.py` —— `HELP_OUTPUT_TEXT`
+  末尾的 "DESIGN.md §3" 引用改为 "SKILL.md 与 references/"。
+- `plugins/specode/skills/specode/references/task-swarm.md` —— 章节
+  标题里 `（§11.X）` 全部去掉，开头 "对应 DESIGN.md §11" 删除。
+- `plugins/specode/scripts/*.py`（9 个文件）—— 所有 docstring / 注释
+  里指向 `DESIGN.md` 的 `§X.Y` 章节引用改为指向具体的
+  `references/*.md` 章节号，或简化为指向 SKILL.md。
+- `plugins/specode/commands/task-swarm.md` —— 3 处 `§11.X` 引用
+  对齐到 `references/task-swarm.md §X`。
+- `plugins/specode/skills/specode/references/selectors.md` —— 历史
+  反 pattern 列表里 `请按 §3.7.X 类型骨架输出` 改为 `请按
+  selectors.md 类型骨架输出`。
+
+### Changed — `CONTRIBUTING.md` 规范化重写
+
+- 删除头部过时的 0.6.0 note（提到 75 tests / 4 hooks / 6 references，
+  现在都不准确）。
+- 测试数字从 "75 tests" 更新到 "153 tests"，覆盖范围描述同步扩大
+  （加 task-swarm 全套 + selector_prompts + 集成 + 兼容性回归）。
+- 新增 **CLI invocation contract** 整节：明确所有 CLI 必须走
+  `run.sh` 包装 + `${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}`
+  完整路径模板（0.8.0 起的硬要求，避免主代理裸调对 cwd 失败）。
+- 新增 **On-disk schema fields** 整节：约束新写入用中性字段名
+  （`session_id` / `holder`，不再用 `claude_session_id`），读侧
+  必须三键 fallback；schema 字段命名变更走 minor 还是 major 的
+  semver 取决于是否带 read-side fallback。
+- semver 表加 hook event names 与 persisted schema fields 到
+  "API surface" 范围；schema rename + fallback 明示走 minor。
+- release 流程加 step 3 "pytest 一次"，明示双宿主 CLI 命令等价。
+- 全文去掉 v0.6 字样，去掉 host-specific 措辞。
+
+### Removed — `.gitignore` 加强
+
+补 `.pytest_cache/` 与 `.claude/` 两条防御性 ignore（目前都未被
+追踪，但 `git add -A` 可能在未来误抓）。
+
+### Tests
+
+153 pass，无净变化。本版仅 docs 删除 / docstring 调整 / `.gitignore`
+更新，无代码逻辑变化。
+
+### Migration
+
+无需迁移。如果你之前 fork 了仓库且依赖 `DESIGN.md` 做参考，请改
+看 Obsidian 备份或对应版本的 git tag。
+
+```sh
+# Adjust the CLI name for whichever host you use (claude / codebuddy).
+claude plugin marketplace update specode
+claude plugin update specode
+```
+
 ## 0.9.1 (2026-05-19)
 
 ### Changed — `tasks.md ## 测试要点` 降权为"参考清单"

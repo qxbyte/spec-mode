@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """task_swarm_outbox.py — 解析 3 类子代理产物：result.md / review.md / validation.md。
 
-按 DESIGN §11.4 schema 严格校验；schema 错误返回 ParseError with 详细 reason。
+按 references/task-swarm.md §4 schema 严格校验；schema 错误返回 ParseError with 详细 reason。
 
 stdlib-only。
 """

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """task_swarm_prompt.py — 预渲染 coder / reviewer / validator subagent 的 task.md。
 
-按 §11.4 规范输出，每个 prompt 必须含：
+按 references/task-swarm.md §4 规范输出，每个 prompt 必须含：
     - specId / spec_dir 上下文
     - @writes / @reads 边界
     - inbox 文件清单（指向 .task-swarm/runs/<id>/agents/<key>/inbox/）

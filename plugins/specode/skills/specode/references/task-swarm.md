@@ -1,11 +1,11 @@
 # task-swarm 协议参考（references/task-swarm.md）
 
-本文档是 `/specode:task-swarm` 命令背后的完整协议，对应 DESIGN.md §11。
+本文档是 `/specode:task-swarm` 命令背后的完整协议。
 主代理在 task-swarm run 期间必须严格按本协议工作。
 
 ---
 
-## 1. 角色与并发度（§11.1）
+## 1. 角色与并发度
 
 | 角色 | 是否并发 | 工具白名单（物理隔离） | 何时被 fork |
 |---|---|---|---|
@@ -21,7 +21,7 @@ reviewer / validator 单实例的理由：
 
 ---
 
-## 2. 文件冲突避免（§11.2）
+## 2. 文件冲突避免
 
 `task_swarm.py init` 解析 tasks.md 时按以下规则把 stage 切成 group：
 
@@ -36,7 +36,7 @@ reviewer / validator 单实例的理由：
 
 ---
 
-## 3. Phase 状态机（§11.3）
+## 3. Phase 状态机
 
 ```
 init → coding → review ─┬─► p0-fix ──► validation
@@ -72,7 +72,7 @@ init → coding → review ─┬─► p0-fix ──► validation
 
 ---
 
-## 4. 子代理产物 schema（§11.4）
+## 4. 子代理产物 schema
 
 每个子代理 fork 时主代理把 prompt 文件预渲染到：
 
@@ -191,7 +191,7 @@ STATUS: ok
 
 ---
 
-## 5. tasks.md 写回格式（§11.5）
+## 5. tasks.md 写回格式
 
 `task_swarm.py writeback --run <id> --group <N>` 干两件事：
 
@@ -214,7 +214,7 @@ writeback 严格 line-safe：禁止改动 stage 标题、`@writes` / `@reads` / 
 
 ---
 
-## 6. on-task-completed hook 提醒矩阵（§11.6）
+## 6. on-task-completed hook 提醒矩阵
 
 `PostToolUse` matcher=`Task` 每次 subagent 返回都触发。hook 读 sessions/<id>.json 看是否在 run 中 → 调 `task_swarm.py plan --run <id>` 拿提示。
 
@@ -235,7 +235,7 @@ writeback 严格 line-safe：禁止改动 stage 标题、`@writes` / `@reads` / 
 
 ---
 
-## 7. 信息流总览（§11.7）
+## 7. 信息流总览
 
 ```
 主代理（spec-mode 主会话，持锁）
@@ -288,7 +288,7 @@ writeback 严格 line-safe：禁止改动 stage 标题、`@writes` / `@reads` / 
 
 ---
 
-## 9. CLI 接口速查（§3.11）
+## 9. CLI 接口速查
 
 ```text
 task_swarm.py init --tasks <abs> [--max-parallel N] [--max-rounds N]

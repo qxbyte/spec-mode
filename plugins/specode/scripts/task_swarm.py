@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""task_swarm.py — task-swarm 编排主 CLI（§3.11 / §11）。
+"""task_swarm.py — task-swarm 编排主 CLI（详见 references/task-swarm.md）。
 
 子命令：
     init      --tasks <abs> [--max-parallel N] [--max-rounds N] [--session <id>] [--spec <dir>]

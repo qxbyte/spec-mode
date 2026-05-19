@@ -432,7 +432,7 @@ questions:
 - `AWAITING_USER_CHOICE` sentinel
 - "请回复选项编号或选项名称"
 - "Type something" / "Chat about this" 保留位
-- "请按 §3.7.X 类型骨架输出"
+- "请按 selectors.md 类型骨架输出"
 - `spec_choice.py` 命令样例
 
 这些词汇在运行时永远不应再出现；它们的目标都由 `AskUserQuestion` 工具替代。

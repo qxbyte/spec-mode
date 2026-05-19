@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""spec_session.py — specode 会话 / 锁 / hook 注入统一入口（§3.3 / §3.4 / §3.5 / §3.6 / §3.7 / §3.8）。
+"""spec_session.py — specode 会话 / 锁 / hook 注入统一入口（详见 SKILL.md + references/）。
 
 业务子命令（被 SKILL.md 引导主会话调用；都接 --session）：
   acquire / release / heartbeat / verify-lock / phase-transition
@@ -172,7 +172,7 @@ def write_spec_config_atomic(spec_dir: Path, data: dict) -> None:
 
 
 # -------------------------------------------------------------------------
-# Selector 提示词常量库（§3.7.7）
+# Selector 提示词常量库（详见 references/selectors.md）
 # -------------------------------------------------------------------------
 
 SELECTOR_PROMPTS: dict[str, str] = {
@@ -516,7 +516,7 @@ def _fill_selector(key: str, ctx: dict[str, str]) -> Optional[str]:
 
 
 # -------------------------------------------------------------------------
-# §3.5 状态行 footer 模板
+# 状态行 footer 模板（详见 SKILL.md §Status Footer）
 # -------------------------------------------------------------------------
 
 STATUS_FOOTER_TEMPLATE = """## 🪧 spec-mode 状态行（必须在本响应末尾输出）
@@ -605,7 +605,7 @@ spec=<slug>, phase=<phase>, mode=readonly
 
 
 # -------------------------------------------------------------------------
-# §3.6 帮助 fast-path 文本（hook emit verbatim）
+# 帮助 fast-path 文本（hook emit verbatim）
 # -------------------------------------------------------------------------
 
 HELP_OUTPUT_TEXT = """specode v0.6 — Specification-driven workflow
@@ -632,7 +632,7 @@ HELP_OUTPUT_TEXT = """specode v0.6 — Specification-driven workflow
   intake → workflow 选择 → requirements / bugfix / design → tasks → implementation
         → acceptance → iteration（可循环）
 
-更多细节见 plugin 内 skills/specode/SKILL.md 与 DESIGN.md §3.
+更多细节见 plugin 内 skills/specode/SKILL.md 与 references/。
 """
 
 HELP_FASTPATH_WRAPPER = """## ⛔ /specode:spec -h fast-path
@@ -1640,7 +1640,7 @@ def _run_task_swarm_plan(run_id: str) -> Optional[dict]:
 
 
 def _format_plan_context(plan: dict) -> str:
-    """按 §11.6 hook 提醒矩阵把 plan dict 渲染成 additionalContext 文本。"""
+    """按 references/task-swarm.md §6 hook 提醒矩阵把 plan dict 渲染成 additionalContext 文本。"""
     phase = str(plan.get("phase") or "?")
     action = str(plan.get("action") or "")
     group = plan.get("group")
@@ -1651,7 +1651,7 @@ def _format_plan_context(plan: dict) -> str:
     n_fork = len(fork) if isinstance(fork, list) else 0
     n_in_flight = len(in_flight) if isinstance(in_flight, list) else 0
 
-    # 选择具体建议文本（§11.6 9 种状态）
+    # 选择具体建议文本（references/task-swarm.md §6 9 种状态）
     if action == "deadloop" or phase == "error":
         body = (
             f"⚠️ 死循环检测：g{group} 已连续 3 轮同一 fail 签名。\n"

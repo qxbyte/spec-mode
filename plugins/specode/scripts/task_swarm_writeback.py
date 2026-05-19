@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""task_swarm_writeback.py — tasks.md line-safe diff writeback（§11.5）。
+"""task_swarm_writeback.py — tasks.md line-safe diff writeback（详见 references/task-swarm.md §5）。
 
 只允许：
     - 在指定 stage 范围内：`- [ ] N.M ...` → `- [x] N.M ...`（仅替换 checkbox 字符）
@@ -108,7 +108,7 @@ def _find_stage_ranges(lines: list[str], target_stages: list[int]) -> dict[int, 
 def _format_findings_block(gf: GroupFindings) -> list[str]:
     """生成单 stage 末尾追加的 `> ` 注释块（list of lines, no trailing newline）。
 
-    格式见 §11.5 示例。
+    格式见 references/task-swarm.md §5 示例。
     """
     out: list[str] = []
     out.append("")  # 空行

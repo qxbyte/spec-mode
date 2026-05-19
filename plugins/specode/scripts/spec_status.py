@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""spec_status.py — `/specode:status` 命令入口（§3.10）。
+"""spec_status.py — `/specode:status` 命令入口。
 
 读 ~/.specode/sessions/<session>.json + active spec 的 .config.json，
 输出可读摘要（人类友好 + JSON 数据块）。

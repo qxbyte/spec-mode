@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""spec_vault.py — Obsidian vault 检测与 specode 根目录配置（§3.1）。
+"""spec_vault.py — Obsidian vault 检测与 specode 根目录配置（详见 references/obsidian.md）。
 
 子命令：
   detect            扫描三平台 obsidian.json，输出已知 vault 列表 (JSON)

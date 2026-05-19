@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""spec_init.py — `/specode:spec <需求>` 入口（§3.2）。
+"""spec_init.py — `/specode:spec <需求>` 入口。
 
 参数：
   --name <slug>                  spec 目录名（建议短横线 slug）

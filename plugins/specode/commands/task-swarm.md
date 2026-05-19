@@ -21,7 +21,7 @@ sh "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh" \
 
 将一份已确认的 `tasks.md` 委派给一组 agent **并发**执行：多 coder 写代码、一个 reviewer 评审、一个 validator 验证 + 循环修复，直至 group 收敛。整个过程 tasks.md 是唯一对外可见的"事实文档"，writeback 走 CLI line-safe diff。
 
-参考协议：`references/task-swarm.md`（详细规格、§11.1-§11.7 全部子节）。
+参考协议：`references/task-swarm.md`（详细规格、§1-§7 全部子节）。
 
 ## 何时用
 
@@ -59,7 +59,7 @@ sh "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh" \
  task_swarm.py resolve --run <run_id>
 ```
 
-## Phase 状态机（详见 references/task-swarm.md §11.3）
+## Phase 状态机（详见 references/task-swarm.md §3）
 
 ```
 init → coding → review ─┬─► p0-fix ──► validation
@@ -85,7 +85,7 @@ init → coding → review ─┬─► p0-fix ──► validation
 
 ## 文件冲突 / group 切分
 
-`task_swarm.py init` 按 §11.2 自动切 group：
+`task_swarm.py init` 按 references/task-swarm.md §2 自动切 group：
 
 - 同一 group 内：任意两 stage 的 `@writes` 集合不相交且无 `@depends-on` 关系。
 - 跨 group：上一 group 全部 pass（writeback 完成）后才能开始下一 group。

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""task_swarm_parse_md.py — 解析 tasks.md 为 stage 列表，并按文件冲突切 group（§11.2）。
+"""task_swarm_parse_md.py — 解析 tasks.md 为 stage 列表，并按文件冲突切 group（references/task-swarm.md §2）。
 
 输入：tasks.md 路径
 输出：
@@ -162,14 +162,14 @@ def parse_tasks_md(path: Path) -> list[Stage]:
 
 
 # -------------------------------------------------------------------------
-# group 切分（§11.2）
+# group 切分（references/task-swarm.md §2）
 # -------------------------------------------------------------------------
 
 def group_by_file_conflict(
     stages: list[Stage],
     max_parallel: int = 4,
 ) -> list[list[Stage]]:
-    """按 §11.2 把 stage 切成 group：
+    """按 references/task-swarm.md §2 把 stage 切成 group：
 
     - 同 group 内任意两 stage 的 @writes 集合不相交且无 @depends-on 关系
     - 跨 group 串行：上一 group 全部 pass 后才能开 next group
