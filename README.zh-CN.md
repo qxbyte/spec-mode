@@ -2,13 +2,13 @@
 
 # specode
 
-面向 **Claude Code** 与 **CodeBuddy** 的规格驱动工作流插件。
+面向 CLI 编码代理的规格驱动工作流插件。
 
-本插件**全部 hook 改为提醒式**——每个 hook 只往模型上下文里注入提示文本（`exit 0` + `additionalContext`），**永不阻断**工具调用。状态绑定到 Claude `session_id`（多窗口天然不混淆），六份 spec 文档（`requirements.md` / `bugfix.md` / `design.md` / `tasks.md` / `acceptance-checklist.md` / `implementation-log.md`）仍是事实源。
+本插件**全部 hook 改为提醒式**——每个 hook 只往模型上下文里注入提示文本（`exit 0` + `additionalContext`），**永不阻断**工具调用。状态绑定到宿主注入的 `session_id`（多窗口天然不混淆），六份 spec 文档（`requirements.md` / `bugfix.md` / `design.md` / `tasks.md` / `acceptance-checklist.md` / `implementation-log.md`）仍是事实源。
 
 ## 能力概览
 
-- **会话状态绑定 `claude_session_id`**。每个 Claude Code 会话拥有独立的状态文件 `~/.specode/sessions/<session_id>.json`，含 mode（active / readonly / ended）、active spec slug、phase、锁状态、当前 `pending_selector`、task_swarm_run_id。所有写操作原子化（tempfile + os.replace + fsync）。
+- **会话状态绑定 `session_id`**。每个宿主会话拥有独立的状态文件 `~/.specode/sessions/<session_id>.json`，含 mode（active / readonly / ended）、active spec slug、phase、锁状态、当前 `pending_selector`、task_swarm_run_id。所有写操作原子化（tempfile + os.replace + fsync）。
 - **持久会话是唯一模式**。`/specode:spec <需求>` 始终创建持久会话；`/specode:end` 写入 `mode=ended`，hook 立刻在下一 turn 停止注入。无 `--persist` 标志。
 - **7 个提醒式 hook（`exit 0`、永不阻断）**：SessionStart / UserPromptSubmit×2（提示注入 + 静默续锁）/ PreToolUse / Stop / PostToolUse Task / SessionEnd。共同负责会话生命周期、phase-gate 选择器提醒、代码-文档同步、task-swarm 节点提醒、状态行 footer 要求。
 - **task-swarm 多 agent 并发**：tasks.md 确认后选 `用 task-swarm 多 agent 并发`，主代理切到编排模式——`task_swarm.py init/plan/advance/writeback` 状态机驱动；多 coder 并发（按 `@writes` 文件冲突自动切 group），reviewer / validator 单实例物理隔离（无 Edit/Write 工具）；validator fail → coder 循环修复直到 pass（3 轮同 fail 签名 → 死循环保护）；reviewer P0 带证据标签触发一次性修复，全部 findings 写回 tasks.md。
@@ -55,19 +55,22 @@ plugins/specode/
 
 ### GitHub（推荐）
 
+使用你已安装的任一 CLI；插件清单两边通用。CodeBuddy 已在 2.97.1 上验证。
+
 ```sh
+# CodeBuddy
+codebuddy plugin marketplace add https://github.com/qxbyte/specode
+codebuddy plugin install specode@specode
+
 # Claude Code
 claude plugin marketplace add https://github.com/qxbyte/specode
 claude plugin install specode@specode
-
-# CodeBuddy（已在 2.97.1 上验证）
-codebuddy plugin marketplace add https://github.com/qxbyte/specode
-codebuddy plugin install specode@specode
 ```
 
-### 一次性会话（仅 Claude Code）
+### 一次性会话
 
 ```sh
+# Claude Code 支持通过 --plugin-url 一次性安装
 claude --plugin-url https://github.com/qxbyte/specode/archive/refs/heads/main.zip
 ```
 

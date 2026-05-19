@@ -55,7 +55,7 @@ def _read_text(p: Path) -> Optional[str]:
 
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(prog="spec_status.py", description="show specode session/spec status")
-    parser.add_argument("--session", required=True, help="Claude session id")
+    parser.add_argument("--session", required=True, help="会话 id（宿主注入的 session_id）")
     parser.add_argument("--json", action="store_true", help="仅输出 JSON")
     args = parser.parse_args(argv)
 
@@ -106,8 +106,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     # 可读摘要
     lines: list[str] = []
     lines.append("=== specode status ===")
-    lines.append(f"session_id     : {sess.get('claude_session_id')}")
-    lines.append(f"session(short) : {_session_short(sess.get('claude_session_id'))}")
+    sid_for_show = sess.get("session_id") or sess.get("claude_session_id")
+    lines.append(f"session_id     : {sid_for_show}")
+    lines.append(f"session(short) : {_session_short(sid_for_show)}")
     lines.append(f"mode           : {sess.get('mode')}")
     lines.append(f"started_at     : {sess.get('started_at')}")
     lines.append(f"last_activity  : {sess.get('last_activity_at')}")

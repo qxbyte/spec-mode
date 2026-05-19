@@ -25,9 +25,9 @@
  - 模型违反规则的代价是 spec 文档与代码失同步——靠 lint + 提醒 hook 注入显式提示，不靠 exit 2 阻断。
 7. **task-swarm 状态机精简**：CLI 仅提供 `init / status / writeback / heartbeat`；不再实现 `next / parse / advance` 全状态机。主会话按 `commands/specode:task-swarm.md` 协议读 `state.json` 自行推进。
 8. **stdlib-only**：所有运行时脚本仅依赖 Python 标准库；测试可用 pytest。
-9. **spec 会话状态绑定 Claude `session_id`（唯一不变标识）**：
- - 每个 Claude Code 会话的 specode 状态写在 `~/.specode/sessions/<claude_session_id>.json`，文件名即标识。
- - `<spec-dir>/.config.json` 的 lock 字段也以 `claude_session_id` 为持有者键——锁主即会话。
+9. **spec 会话状态绑定宿主 `session_id`（唯一不变标识）**：
+ - 每个宿主会话的 specode 状态写在 `~/.specode/sessions/<session_id>.json`，文件名即标识。
+ - `<spec-dir>/.config.json` 的 lock 字段也以 `session_id` 为持有者键——锁主即会话。
  - 所有 hook 通过 stdin payload 直接拿 `session_id`，不需要"猜当前会话"。
  - `SessionStart` / `/specode:spec` / `/specode:continue` / `/specode:end` / `SessionEnd` 都强制写 sessions 文件——任何写失败视为整命令失败，禁止 in-memory 半成功。
  - 模型无须自己记 session_id：UserPromptSubmit hook 在 additionalContext 里始终包含当前 session_id，模型调 CLI 时把它作为 `--session <id>` 参数传入。
@@ -89,7 +89,7 @@ plugins/specode/
 
 ```
 ~/.specode/
- sessions/<claude_session_id>.json ← v0.6；每个 Claude 会话一份；hook + CLI 共同维护
+ sessions/<session_id>.json ← v0.6；每个宿主会话一份；hook + CLI 共同维护
  config.json (optional) ← v0.6；obsidianRoot 等持久配置（也可放 ~/.config/specode/）
 ```
 
@@ -142,7 +142,7 @@ spec_init.py \
  --name <slug> \
  --requirement-name "<显示名>" \
  --source-text "<原始需求文本>" \
- --session <claude_session_id> \
+ --session <session_id> \
  [--root <override>] \
  [--detect-vault]
 ```
@@ -161,11 +161,11 @@ spec_init.py \
 
 ### 3.3 Session 状态文件 schema
 
-文件路径：`~/.specode/sessions/<claude_session_id>.json`
+文件路径：`~/.specode/sessions/<session_id>.json`
 
 ```json
 {
- "claude_session_id": "abc-def-1234-...",
+ "session_id": "abc-def-1234-...",
  "started_at": "2026-05-19T09:30:00Z",
  "last_activity_at": "2026-05-19T10:05:00Z",
  "ended_at": null,
@@ -183,7 +183,7 @@ spec_init.py \
 
 | 字段 | 取值 | 维护者 |
 |---|---|---|
-| `claude_session_id` | hook payload 中的 session UUID | SessionStart hook 创建时写入 |
+| `session_id` | hook payload 中的 session UUID | SessionStart hook 创建时写入 |
 | `started_at` / `last_activity_at` | ISO8601 UTC | SessionStart 写 started_at；每个 hook 触发刷新 last_activity_at |
 | `ended_at` | ISO8601 或 null | `/specode:end` 或 SessionEnd hook 写入 |
 | `mode` | `active` / `readonly` / `ended` | `/specode:spec` / `/specode:continue` / `/specode:end` 命令切换 |
@@ -260,7 +260,7 @@ on-pre-tool-use # v0.8；PreToolUse；不在 task-swarm run 期间 → exit 0；
 
 **所有 hook 子命令永远 exit 0**——这是 §0 第 3 条原则的物理落地。
 
-锁存储：`<spec-dir>/.config.json` 的 `lock` 字段，持有者键 = `claude_session_id`。stale 周期：默认 30 分钟。
+锁存储：`<spec-dir>/.config.json` 的 `lock` 字段，持有者键 = `session_id`。stale 周期：默认 30 分钟。
 
 ### 3.5 状态行 footer 模板
 
@@ -663,7 +663,7 @@ tasks.md 已确认。required 任务数：<n_required>，optional 任务数：<n
 ## ⛔ 必须呈现「该 spec 已被其他窗口持有」选择器（类型 A 单列单选）
 
 active spec: <slug>（phase=<phase>）
-锁持有者: claude_session_id=<other-id 前 8 位>, 最近 heartbeat: <iso>
+锁持有者: session_id=<other-id 前 8 位>, 最近 heartbeat: <iso>
 
 标题：该 spec 已被其他窗口持有
 正式选项（**逐字使用**）：
@@ -933,7 +933,7 @@ model: sonnet
 
 **总原则**：所有 hook 永远 `exit 0`，仅通过 `hookSpecificOutput.additionalContext` JSON 把提示注入模型上下文。**没有 `exit 2`，没有拦截**。Hook 在节点上把"该想什么"递给模型，让不让做由模型自己定。
 
-所有 hook 共用 `spec_session.py on-*` 子命令家族；读取 / 写入 `~/.specode/sessions/<claude_session_id>.json`（§3.3）以维持"会话即状态"模型。
+所有 hook 共用 `spec_session.py on-*` 子命令家族；读取 / 写入 `~/.specode/sessions/<session_id>.json`（§3.3）以维持"会话即状态"模型。
 
 ### 5.1 `SessionStart` `on-session-start`
 
@@ -947,7 +947,7 @@ sh "${CLAUDE_PLUGIN_ROOT}/scripts/run.sh" \
 1. 从 stdin payload 拿 `session_id`、`cwd`。
 2. **强制写**`~/.specode/sessions/<session_id>.json`，初始状态：
  ```json
- { "claude_session_id": "...", "started_at": "<now>",
+ { "session_id": "...", "started_at": "<now>",
  "mode": "idle", "active_spec_slug": null, "active_spec_dir": null,
  "phase": null, "lock_state": "released" }
  ```
@@ -956,7 +956,7 @@ sh "${CLAUDE_PLUGIN_ROOT}/scripts/run.sh" \
  ```text
  ## Specode session 就绪
 
- 当前 Claude session_id: <id>
+ 当前会话 session_id: <id>
  后续调用 specode CLI 时请始终用 `--session <id>` 传入。
 
  （此 session 当前 mode=<idle|active|readonly>，spec=<slug 或 无>；
@@ -1070,10 +1070,10 @@ sh "${CLAUDE_PLUGIN_ROOT}/scripts/run.sh" \
 
 | Event | Handler 子命令 | 引入版本 | 触发条件 | 是否注入 |
 |---|---|---|---|---|
-| `SessionStart` | `on-session-start` | **v0.6** | 每次新 Claude 会话启动 | session_id + spec 模式状态 |
+| `SessionStart` | `on-session-start` | **v0.6** | 每次新宿主会话启动 | session_id + spec 模式状态 |
 | `UserPromptSubmit` | `on-user-prompt` | **v0.6** | 用户提交 prompt | fast-path / selector / 文档优先 / 状态行 footer / 模式提醒（按 mode 叠加） |
 | `Stop` | `on-stop` | **v0.6** | 模型 turn 结束 | 代码-文档同步 + spec 模式延续提醒（active 时） |
-| `SessionEnd` | `on-session-end` | **v0.6** | Claude 会话退出 | 否（写 mode=ended + 释锁兜底） |
+| `SessionEnd` | `on-session-end` | **v0.6** | 宿主会话退出 | 否（写 mode=ended + 释锁兜底） |
 | `PostToolUse` Task | `on-task-completed` | **v0.7** | subagent 完成 | task-swarm 下一步提醒 |
 | `UserPromptSubmit` | `on-heartbeat-quiet` | v0.8 | 用户提交 prompt | 否（仅续锁） |
 | `PreToolUse` | `on-pre-tool-use` | v0.8 | Edit/Write/MultiEdit | tasks.md 直写命中时 |
@@ -1172,7 +1172,7 @@ v0.6 完成后获得："session 生命周期管理 + 选择器提醒 + 双侧文
  - 新增 §Help Fast-path：`/specode:spec -h` 必须逐字打印 hook 注入的帮助文本（§3.6）。
 8. 补 `skills/specode/references/{workflow,lock-protocol,obsidian,prompts,templates,iteration}.md`。
  - `prompts.md` 改写：从"调用 `spec_choice.py` 的命令样例"改成"6 个场景的标题/选项常量表 + 输出格式"。
- - `lock-protocol.md` 中锁持有者键改成 `claude_session_id`，与 §3.3 一致。
+ - `lock-protocol.md` 中锁持有者键改成 `session_id`，与 §3.3 一致。
 9. 新增 `agents/spec-writer.md`（tools: `Read, Write, Edit, Grep, Glob`——无 Bash）。
 10. 更新 5 个 `commands/*.md` 让其与 SKILL.md 一致：
  - `spec.md` 删除 `--persist` 提示，明确所有 `/specode:spec <需求>` 都持久。
@@ -1227,7 +1227,7 @@ reviewer / validator 单实例的理由：
 }
 ```
 
-主代理在 coding phase **同一 message 内**发出多个 Task block（每个对应当前 group 的一个 stage），Claude Code 并行执行。SKILL.md 强约束：
+主代理在 coding phase **同一 message 内**发出多个 Task block（每个对应当前 group 的一个 stage），由宿主并行执行。SKILL.md 强约束：
 
 > 派发 coder 时，必须先调 `task_swarm.py plan` 拿当前 group 的 stage 列表，**逐字拷贝**到 Task block——绝不可凭印象自己派；脚本已经处理过文件冲突分组。如果 tasks.md 在 task-swarm 期间被改了（新增 stage），先 `task_swarm.py reinit`（v0.7 不实现 reinit → 报 error 让用户重跑 `/specode:task-swarm`）。
 

@@ -140,6 +140,9 @@ def read_session(session_id: str) -> Optional[dict]:
         with p.open("r", encoding="utf-8") as fh:
             data = json.load(fh)
         if isinstance(data, dict):
+            # 兼容老 sessions/<id>.json：字段名曾叫 claude_session_id，迁移到 session_id
+            if "session_id" not in data and "claude_session_id" in data:
+                data["session_id"] = data["claude_session_id"]
             return data
     except Exception:
         return None
@@ -199,7 +202,7 @@ questions:
 **约束**：
 - 调用工具后立即 end turn 等待用户选择。
 - 不要在 chat 输出 markdown 列表 / 不要让用户回复编号。
-- Claude Code 工具自动提供 "Other" + ESC 取消，**禁止**自己加 "Type something" / "Chat about this" 保留位。
+- 宿主工具自动提供 "Other" + ESC 取消，**禁止**自己加 "Type something" / "Chat about this" 保留位。
 """,
     "clarification-wizard": """## 选择器节点：需求澄清问答（wizard）
 
@@ -427,7 +430,7 @@ questions:
 **调用 `AskUserQuestion` 工具**：
 
 questions:
-  - question: "该 spec 已被其他 Claude 窗口持有，怎么处理？"
+  - question: "该 spec 已被其他会话窗口持有，怎么处理？"
     header: "接管选项"
     multiSelect: false
     options:
@@ -606,7 +609,7 @@ spec=<slug>, phase=<phase>, mode=readonly
 # §3.6 帮助 fast-path 文本（hook emit verbatim）
 # -------------------------------------------------------------------------
 
-HELP_OUTPUT_TEXT = """specode v0.6 — Specification-driven workflow for Claude Code
+HELP_OUTPUT_TEXT = """specode v0.6 — Specification-driven workflow
 
 命令一览：
 
@@ -622,7 +625,7 @@ HELP_OUTPUT_TEXT = """specode v0.6 — Specification-driven workflow for Claude 
   /specode:spec -h | --help             显示本帮助
 
 会话与锁：
-  每次 Claude 会话拥有唯一 session_id，hook 会在 additionalContext 中持续注入。
+  每次会话拥有唯一 session_id，hook 会在 additionalContext 中持续注入。
   CLI 调用必须传 --session <id>。当前 spec 锁记录在 <spec-dir>/.config.json。
   忘记 /specode:end 时 SessionEnd hook 会兜底释锁；30 分钟无 heartbeat 视为 stale。
 
@@ -691,7 +694,7 @@ def _update_session_for_spec(session_id: str, spec_dir: Path, cfg: dict,
     else:
         pending = pending_selector
     payload = {
-        "claude_session_id": session_id,
+        "session_id": session_id,
         "started_at": existing.get("started_at") or _now_iso(),
         "last_activity_at": _now_iso(),
         "ended_at": None,
@@ -1034,7 +1037,7 @@ def cmd_end(args: argparse.Namespace) -> int:
     if existing is None:
         # 即使 sessions 文件不存在，也写一份 ended 状态，便于排查
         existing = {
-            "claude_session_id": args.session,
+            "session_id": args.session,
             "started_at": _now_iso(),
         }
     spec_dir_str = existing.get("active_spec_dir")
@@ -1191,9 +1194,9 @@ def cmd_list_specs(args: argparse.Namespace) -> int:
             continue
 
         lock = cfg.get("lock") or {}
-        # 业务侧实际字段名是 holder；保留 claude_session_id 兜底以兼容文档表述
+        # 业务侧实际字段名是 holder；兼容历史 session_id / claude_session_id 兜底
         holder_id = (
-            lock.get("holder") or lock.get("claude_session_id")
+            lock.get("holder") or lock.get("session_id") or lock.get("claude_session_id")
             if isinstance(lock, dict) else None
         )
         if holder_id:
@@ -1275,7 +1278,7 @@ def _read_stdin_payload() -> dict:
 
 
 def _emit_hook_additional_context(text: str, hook_event_name: str = "UserPromptSubmit") -> None:
-    """按 Claude Code hook 协议 emit additionalContext JSON。"""
+    """按宿主 hook 协议 emit additionalContext JSON。"""
     payload = {
         "hookSpecificOutput": {
             "hookEventName": hook_event_name,
@@ -1318,7 +1321,7 @@ def hook_on_session_start(args: argparse.Namespace) -> None:
     existing = read_session(session_id)
     if existing is None:
         new_payload = {
-            "claude_session_id": session_id,
+            "session_id": session_id,
             "started_at": _now_iso(),
             "last_activity_at": _now_iso(),
             "ended_at": None,
@@ -1351,7 +1354,7 @@ def hook_on_session_start(args: argparse.Namespace) -> None:
     slug = existing.get("active_spec_slug") or "无"
     text = (
         "## Specode session 就绪\n\n"
-        f"当前 Claude session_id: {session_id}\n"
+        f"当前会话 session_id: {session_id}\n"
         f"后续调用 specode CLI 时请始终用 `--session {session_id}` 传入。\n\n"
         f"（此 session 当前 mode={mode}，spec={slug}；\n"
         "  如需开始新 spec，使用 `/specode:spec <需求>`；\n"
@@ -1453,7 +1456,7 @@ def hook_on_user_prompt(args: argparse.Namespace) -> None:
     # (a) session_id 提醒
     parts.append(
         "## Specode session 提醒\n\n"
-        f"当前 Claude session_id: {session_id}\n"
+        f"当前会话 session_id: {session_id}\n"
         f"调用任何 specode CLI 时请使用 `--session {session_id}`。\n"
     )
 
@@ -1787,7 +1790,7 @@ def hook_on_heartbeat_quiet(args: argparse.Namespace) -> None:
     lock = cfg.get("lock") or {}
     if not isinstance(lock, dict):
         return
-    holder = lock.get("claude_session_id") or lock.get("holder")
+    holder = lock.get("holder") or lock.get("session_id") or lock.get("claude_session_id")
     if holder != session_id:
         return
 

@@ -254,7 +254,7 @@ def test_resolve_clears_session_task_swarm_run_id(tmp_path, run_swarm, monkeypat
     sessions_dir.mkdir(parents=True, exist_ok=True)
     sid = "test-sess-123"
     sess_file = sessions_dir / f"{sid}.json"
-    sess_file.write_text(json.dumps({"claude_session_id": sid, "mode": "active",
+    sess_file.write_text(json.dumps({"session_id": sid, "mode": "active",
                                      "task_swarm_run_id": None}), encoding="utf-8")
     p = _write_tasks_md(tmp_path, num_stages=1)
     init = json.loads(run_swarm("init", "--tasks", str(p), "--session", sid).stdout)

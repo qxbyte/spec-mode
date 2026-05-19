@@ -48,7 +48,7 @@ python3 plugins/specode/scripts/spec_init.py \
  --name <slug> \
  --requirement-name "<中文显示名>" \
  --source-text "<原始需求文本>" \
- --session <claude_session_id> \
+ --session <session_id> \
  [--root <override>] \
  [--detect-vault]
 ```

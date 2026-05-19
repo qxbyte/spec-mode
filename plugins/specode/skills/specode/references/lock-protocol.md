@@ -1,13 +1,13 @@
 # Lock Protocol — 锁状态机与多窗口接管
 
-每个 spec 自己的 `<spec-dir>/.config.json.lock` 字段管单写权。**持有者键 = `claude_session_id`**（与 `~/.specode/sessions/<id>.json` 文件名同源）。
+每个 spec 自己的 `<spec-dir>/.config.json.lock` 字段管单写权。**持有者键 = `session_id`**（与 `~/.specode/sessions/<id>.json` 文件名同源）。
 
 ## 0. 设计原则
 
 - 锁存放在 spec 自身 `.config.json`，**不**放在 `<doc-root>/.active-specode.json`。原因：spec 文档可能跨设备同步（Obsidian），边界判断必须以 spec 自身状态为准；如果索引文件丢失，锁不能跟着消失。
 - **任何 spec 文档写入前，必须持锁**。这是不可绕过的铁律（由 SKILL.md §Multi-Window + Lock 的"写前三重校验"保证）。
 - 多窗口可同时打开**不同** spec；同一 spec 同一时刻只允许一个会话写入。
-- 锁主即会话：所有 `acquire` / `release` / `heartbeat` / `verify-lock` 必须传 `--session <claude_session_id>`，CLI 拒绝匿名调用。
+- 锁主即会话：所有 `acquire` / `release` / `heartbeat` / `verify-lock` 必须传 `--session <session_id>`，CLI 拒绝匿名调用。
 
 ## 1. `.config.json.lock` 字段
 
@@ -17,15 +17,15 @@
  "currentPhase": "tasks",
  "workflow": "requirements",
  "lock": {
- "claude_session_id": "abc-def-1234-...",
+ "session_id": "abc-def-1234-...",
  "acquired_at": "2026-05-19T10:00:00Z",
  "last_heartbeat_at": "2026-05-19T10:25:00Z",
- "agent": "claude-code",
+ "agent": "cli-agent",
  "pid": 12345
  },
  "evicted_sessions": [
  {
- "claude_session_id": "old-session-id",
+ "session_id": "old-session-id",
  "evicted_at": "2026-05-19T10:30:00Z",
  "evicted_by": "abc-def-1234-...",
  "reason": "force_acquire"
@@ -107,7 +107,7 @@
 
 ### 6.2 LockHeld 三选项
 
-1. 输出锁状态摘要：`持有者 claude_session_id 前 8 位 + 最近 heartbeat 时间`。
+1. 输出锁状态摘要：`持有者 session_id 前 8 位 + 最近 heartbeat 时间`。
 2. 呈现 `takeover-options` 选择器（类型 A，详见 `references/prompts.md` §(6)）。**无推荐项**——让用户根据对方是否仍活跃自己判断。
 3. End turn 等用户选。
 

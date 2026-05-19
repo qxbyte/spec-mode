@@ -30,7 +30,7 @@ reviewer / validator 单实例的理由：
 3. 跨 group：上一 group 全部 pass 后才能开始下一 group。
 4. 一个 stage 即使可以并发也不会被拆——以"stage = coder 任务粒度的最大单元"为铁律。
 
-主代理在 coding phase **同一 message 内**发出多个 Task block（每个对应当前 group 的一个 stage），Claude Code 并行执行。
+主代理在 coding phase **同一 message 内**发出多个 Task block（每个对应当前 group 的一个 stage），由宿主并行执行。
 
 **强约束**：派发 coder 时，必须先调 `task_swarm.py plan` 拿当前 group 的 stage 列表，**逐字拷贝**到 Task block——绝不可凭印象自己派；脚本已经处理过文件冲突分组。
 
@@ -292,7 +292,7 @@ writeback 严格 line-safe：禁止改动 stage 标题、`@writes` / `@reads` / 
 
 ```text
 task_swarm.py init --tasks <abs> [--max-parallel N] [--max-rounds N]
- [--session <claude_session_id>] [--spec <abs>]
+ [--session <session_id>] [--spec <abs>]
  → {"run_id", "groups": [...], "spec_dir": ...}
 
 task_swarm.py status --run <run_id>

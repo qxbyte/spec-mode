@@ -1,6 +1,6 @@
 # Selectors — `AskUserQuestion` 调用规范
 
-每个 phase-gate 节点必须**调用 Claude Code 内置 `AskUserQuestion` 工具**呈现选择器；工具自身渲染 chip-tabs / 选项列表 / 上下键导航 / 回车提交 / ESC 取消 / "Other" 自定义输入 UI。模型只负责传参，**绝不**自己输出 markdown 列表让用户回复编号。
+每个 phase-gate 节点必须**调用宿主内置 `AskUserQuestion` 工具**呈现选择器；工具自身渲染 chip-tabs / 选项列表 / 上下键导航 / 回车提交 / ESC 取消 / "Other" 自定义输入 UI。模型只负责传参，**绝不**自己输出 markdown 列表让用户回复编号。
 
 本文件给出全部 8 个固定场景的 (类型 → AskUserQuestion 参数)；spec_session.py 的 `SELECTOR_PROMPTS` 字典是这些模板的运行时常量库。
 
@@ -196,7 +196,7 @@ questions:
 **调用 `AskUserQuestion` 工具**：
 
 questions:
-  - question: "该 spec 已被其他 Claude 窗口持有，怎么处理？"
+  - question: "该 spec 已被其他会话窗口持有，怎么处理？"
     header: "接管选项"
     multiSelect: false
     options:

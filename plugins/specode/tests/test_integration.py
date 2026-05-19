@@ -147,7 +147,7 @@ def test_guard_off_bypasses_all_hooks(run_script, fake_home, make_session_id):
     sess_dir = fake_home / ".specode" / "sessions"
     sess_dir.mkdir(parents=True, exist_ok=True)
     (sess_dir / f"{sid}.json").write_text(json.dumps({
-        "claude_session_id": sid,
+        "session_id": sid,
         "mode": "active",
         "active_spec_slug": "x",
         "active_spec_dir": "/tmp/no-such",

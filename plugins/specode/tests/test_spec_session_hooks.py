@@ -37,7 +37,7 @@ def _write_session(fake_home: Path, sid: str, **overrides) -> Path:
     sess_dir = fake_home / ".specode" / "sessions"
     sess_dir.mkdir(parents=True, exist_ok=True)
     base = {
-        "claude_session_id": sid,
+        "session_id": sid,
         "started_at": "2026-01-01T00:00:00Z",
         "last_activity_at": "2026-01-01T00:00:00Z",
         "ended_at": None,
@@ -71,7 +71,7 @@ def test_on_session_start_new_session_writes_idle(
     assert sess_path.exists()
     sess = json.loads(sess_path.read_text())
     assert sess["mode"] == "idle"
-    assert sess["claude_session_id"] == sid
+    assert sess["session_id"] == sid
 
 
 def test_on_session_start_additional_context_contains_session_id(

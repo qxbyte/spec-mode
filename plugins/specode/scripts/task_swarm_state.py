@@ -101,7 +101,7 @@ class StateMachine:
     run_dir: str
     max_parallel: int = 4
     max_rounds: int = 6
-    claude_session_id: Optional[str] = None
+    session_id: Optional[str] = None
     spec_dir: Optional[str] = None
     spec_id: Optional[str] = None
 
@@ -166,7 +166,7 @@ class StateMachine:
             run_dir=str(run_dir),
             max_parallel=data.get("max_parallel", 4),
             max_rounds=data.get("max_rounds", 6),
-            claude_session_id=data.get("claude_session_id"),
+            session_id=data.get("session_id") or data.get("claude_session_id"),
             spec_dir=data.get("spec_dir"),
             spec_id=data.get("spec_id"),
             groups=groups,
@@ -202,7 +202,7 @@ class StateMachine:
             "run_dir": self.run_dir,
             "max_parallel": self.max_parallel,
             "max_rounds": self.max_rounds,
-            "claude_session_id": self.claude_session_id,
+            "session_id": self.session_id,
             "spec_dir": self.spec_dir,
             "spec_id": self.spec_id,
             "groups": [[asdict(s) for s in g] for g in self.groups],

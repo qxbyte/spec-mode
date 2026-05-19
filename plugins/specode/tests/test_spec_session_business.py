@@ -239,9 +239,31 @@ def test_read_session_emits_payload(run_script, init_spec, fake_home):
     cp = run_script("spec_session.py", "read-session", "--session", sid)
     assert cp.returncode == 0
     payload = json.loads(cp.stdout)
-    assert payload["claude_session_id"] == sid
+    assert payload["session_id"] == sid
     assert payload["mode"] == "active"
     assert payload["active_spec_slug"] == slug
+
+
+def test_read_session_migrates_legacy_claude_session_id(
+    run_script, fake_home, make_session_id
+):
+    """老 sessions/<id>.json 字段名是 claude_session_id；read_session 应自动塞 session_id 字段。"""
+    sid = make_session_id()
+    sess_dir = fake_home / ".specode" / "sessions"
+    sess_dir.mkdir(parents=True, exist_ok=True)
+    legacy = {
+        "claude_session_id": sid,
+        "started_at": "2026-01-01T00:00:00Z",
+        "last_activity_at": "2026-01-01T00:00:00Z",
+        "mode": "idle",
+    }
+    (sess_dir / f"{sid}.json").write_text(json.dumps(legacy), encoding="utf-8")
+    cp = run_script("spec_session.py", "read-session", "--session", sid)
+    assert cp.returncode == 0, cp.stderr
+    payload = json.loads(cp.stdout)
+    assert payload["session_id"] == sid
+    # 老字段仍保留（向后兼容；后续写入才会被覆盖为新格式）
+    assert payload.get("claude_session_id") == sid
 
 
 def test_status_emits_human_summary(run_script, init_spec, fake_home):

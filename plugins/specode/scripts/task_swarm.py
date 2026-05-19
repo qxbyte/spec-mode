@@ -236,7 +236,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         run_dir=str(run_dir),
         max_parallel=args.max_parallel,
         max_rounds=args.max_rounds,
-        claude_session_id=args.session,
+        session_id=args.session,
         spec_dir=str(spec_dir) if spec_dir else None,
         spec_id=spec_id,
         groups=groups,
@@ -1218,7 +1218,7 @@ def cmd_heartbeat(args: argparse.Namespace) -> int:
         "ok": True,
         "run_id": sm.run_id,
         "spec_dir": sm.spec_dir,
-        "claude_session_id": sm.claude_session_id,
+        "session_id": sm.session_id,
         "hint": ("如需保活 spec 锁，请额外调用 spec_session.py heartbeat "
                  "--spec <dir> --session <id>"),
     })
@@ -1247,13 +1247,13 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         sm.events_append({"type": "resolve", "status": sm.failed_status})
     sm.save()
     # 清理 sessions.task_swarm_run_id
-    if sm.claude_session_id:
-        sess = _read_session(sm.claude_session_id)
+    if sm.session_id:
+        sess = _read_session(sm.session_id)
         if sess is not None and sess.get("task_swarm_run_id") == sm.run_id:
             sess["task_swarm_run_id"] = None
             sess["last_activity_at"] = _now_iso()
             with contextlib.suppress(Exception):
-                _write_session(sm.claude_session_id, sess)
+                _write_session(sm.session_id, sess)
     _emit({
         "ok": True,
         "run_id": sm.run_id,

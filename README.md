@@ -2,23 +2,22 @@
 
 # specode
 
-Specification-driven workflow plugin for **Claude Code** and **CodeBuddy**.
+Specification-driven workflow plugin for CLI coding agents.
 
 This plugin runs the workflow on top of **advisory-only hooks** — every
 hook injects guidance into the model's context (`exit 0` +
 `additionalContext`) and never blocks tool calls. State binds to the
-Claude `session_id` so multiple windows stay disambiguated, and the
+host's `session_id` so multiple windows stay disambiguated, and the
 six spec documents (`requirements.md` / `bugfix.md` / `design.md` /
 `tasks.md` / `acceptance-checklist.md` / `implementation-log.md`)
 remain the single source of truth.
 
 ## What you get
 
-- **Session lifecycle bound to `claude_session_id`.** Every Claude
-  Code session has its own state file at
-  `~/.specode/sessions/<session_id>.json` with mode (active /
-  readonly / ended), active spec slug, phase, lock state, and the
-  current `pending_selector`. All writes are atomic.
+- **Session lifecycle bound to `session_id`.** Every host session has
+  its own state file at `~/.specode/sessions/<session_id>.json` with
+  mode (active / readonly / ended), active spec slug, phase, lock
+  state, and the current `pending_selector`. All writes are atomic.
 - **Persistent session is the only mode.** `/specode:spec <requirement>`
   always creates a persistent session; `/specode:end` writes
   `mode=ended` so hooks immediately stop injecting on the next turn.
@@ -88,19 +87,23 @@ plugins/specode/
 
 ### From GitHub
 
+Use whichever CLI you have installed; the plugin manifest is the
+same for both. CodeBuddy is verified on 2.97.1.
+
 ```sh
+# CodeBuddy
+codebuddy plugin marketplace add https://github.com/qxbyte/specode
+codebuddy plugin install specode@specode
+
 # Claude Code
 claude plugin marketplace add https://github.com/qxbyte/specode
 claude plugin install specode@specode
-
-# CodeBuddy (verified on 2.97.1)
-codebuddy plugin marketplace add https://github.com/qxbyte/specode
-codebuddy plugin install specode@specode
 ```
 
-### One-shot session (Claude Code only)
+### One-shot session
 
 ```sh
+# Claude Code supports a one-shot install via --plugin-url
 claude --plugin-url https://github.com/qxbyte/specode/archive/refs/heads/main.zip
 ```
 

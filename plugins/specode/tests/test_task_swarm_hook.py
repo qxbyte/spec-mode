@@ -41,7 +41,7 @@ def _make_session(home: Path, sid: str, task_swarm_run_id: str = None,
     sd.mkdir(parents=True, exist_ok=True)
     p = sd / f"{sid}.json"
     p.write_text(json.dumps({
-        "claude_session_id": sid,
+        "session_id": sid,
         "mode": mode,
         "task_swarm_run_id": task_swarm_run_id,
     }), encoding="utf-8")

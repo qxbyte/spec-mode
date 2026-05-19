@@ -5,7 +5,7 @@
   --name <slug>                  spec 目录名（建议短横线 slug）
   --requirement-name "<显示名>"  人类可读名称（写入 .config.json）
   --source-text "<原始需求文本>" 写入 requirements.md / bugfix.md 的 summary
-  --session <claude_session_id>  Claude 会话 id（必填）
+  --session <session_id>         会话 id（必填）
   [--root <override>]            覆盖三层 doc_root 解析
   [--detect-vault]               仅打印 vault 检测结果后退出
 
@@ -214,7 +214,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--name", required=True, help="spec slug（短横线小写）")
     parser.add_argument("--requirement-name", required=True, help="人类可读名称")
     parser.add_argument("--source-text", required=True, help="原始需求文本（写入 summary）")
-    parser.add_argument("--session", required=True, help="Claude session id")
+    parser.add_argument("--session", required=True, help="会话 id（宿主注入的 session_id）")
     parser.add_argument("--root", help="覆盖 doc_root（绝对路径）")
     parser.add_argument("--detect-vault", action="store_true", help="仅打印 vault 检测结果后退出")
     args = parser.parse_args(argv)
@@ -361,7 +361,7 @@ def main(argv: Optional[list[str]] = None) -> int:
 
         # 5. 强制写 sessions/<id>.json
         session_payload = {
-            "claude_session_id": args.session,
+            "session_id": args.session,
             "started_at": created_at,
             "last_activity_at": created_at,
             "ended_at": None,

@@ -40,8 +40,8 @@
 
 | 序号 | 你的要求 | 状态 | 证据 |
 |---|---|---|---|
-| 3.1 | 配置文件状态绑定**会话唯一不变标识** | ✅ | 用 Claude Code hook payload 的 `session_id` 作为标识。状态文件路径 = `~/.specode/sessions/<claude_session_id>.json` |
-| 3.2 | sessions 文件 schema 含 mode + spec slug + phase + lock 状态 | ✅ | `read_session()` / `write_session_atomic()`（spec_session.py L135-150）；字段：`claude_session_id` / `started_at` / `last_activity_at` / `ended_at` / `mode` / `active_spec_slug` / `active_spec_dir` / `spec_id` / `phase` / `lock_state` / `pending_selector` / `task_swarm_run_id` |
+| 3.1 | 配置文件状态绑定**会话唯一不变标识** | ✅ | 用宿主 hook payload 的 `session_id` 作为标识。状态文件路径 = `~/.specode/sessions/<session_id>.json` |
+| 3.2 | sessions 文件 schema 含 mode + spec slug + phase + lock 状态 | ✅ | `read_session()` / `write_session_atomic()`（spec_session.py L135-150）；字段：`session_id`（老文件 `claude_session_id` 自动迁移）/ `started_at` / `last_activity_at` / `ended_at` / `mode` / `active_spec_slug` / `active_spec_dir` / `spec_id` / `phase` / `lock_state` / `pending_selector` / `task_swarm_run_id` |
 | 3.3 | mode 三态：active / readonly / ended | ✅ | `cmd_continue` 中 readonly 分支写 `mode=readonly`；`cmd_end` 写 `mode=ended`；初始 `mode=idle` 由 `on-session-start` 创建 |
 | 3.4 | 所有 hook 通过 stdin payload 拿 session_id（不需要"猜"） | ✅ | `_read_stdin_payload()`（spec_session.py L1004）读 hook JSON，`payload.session_id or payload.sessionId` |
 | 3.5 | 主代理调 CLI 时 `--session <id>` 传入 | ✅ | `acquire/release/heartbeat/verify-lock/phase-transition/continue/end/status/read-session` 均 `--session required=True`（_build_parser L1623+） |
@@ -57,7 +57,7 @@
 | 4.1 | 保留 0.4.x 的 hook+脚本处理 spec 状态、信息变更、锁 | ✅ | `spec_session.py` 业务子命令 acquire/release/heartbeat/verify-lock/phase-transition 全部存在；锁字段 `<spec-dir>/.config.json.lock` 含 `holder` + `acquired_at` + `last_heartbeat_at` + `pid`（spec_session.py L611-655） |
 | 4.2 | 30 分钟无 heartbeat 视为 stale | ✅ | `STALE_LOCK_SECONDS = 30 * 60`（spec_session.py L46） |
 | 4.3 | 多窗口接管三选项（强制接管 / 只读 / 取消） | ✅ | `takeover-options` 是 §3.7.4 表里 8 个固定场景之一；SELECTOR_PROMPTS["takeover-options"] 固定文本含 3 个正式选项 |
-| 4.4 | 锁持有者键 = claude_session_id | ⚠️ 字段命名稍混 | 业务侧实际用 `lock.holder` 字段（acquire 写 L633 `"holder": args.session`）；list-specs / hook_on_heartbeat_quiet 同时支持 `lock.holder` 与 `lock.claude_session_id` 兜底（L1086, L1678）。**功能正确**，命名不统一是历史遗留；如要彻底统一可加 v0.8 patch |
+| 4.4 | 锁持有者键 = session_id | ✅ | 业务侧用 `lock.holder` 字段（acquire 写 `"holder": args.session`）；list-specs / hook_on_heartbeat_quiet 同时按 `lock.holder` → `lock.session_id` → `lock.claude_session_id` 三键 fallback，兼容历史文件 |
 | 4.5 | 写前三重校验（specId / 边界 / verify-lock） | ✅ | SKILL.md §Multi-Window + Lock 声明；`spec_init.py` 边界校验确保 spec_dir 在 documentRoot 下；`cmd_acquire` 验 specId 匹配 |
 | 4.6 | SessionEnd 兜底释锁（用户忘了 /end 时） | ✅ | `hook_on_session_end`（spec_session.py L1333）扫 sessions，若 mode=active/readonly 且持有 spec 锁 → 写 spec.config.json.lock=null + sessions mode=ended |
 
@@ -119,7 +119,7 @@
 | 8.1 | `/specode:spec -h` 由 hook 注入帮助模板 | ✅ | `FAST_PATH_HELP`（spec_session.py L1123）正则匹配 `^/specode:spec\s+(-h\|--help)\s*$`；`HELP_OUTPUT_TEXT` 常量（L501）是完整帮助文本（硬编码，不依赖外部文件） |
 | 8.2 | `--vault-status` / `--detect-vault` / `--sync-status` 同 fast-path | ✅ | `FAST_PATH_VAULT`（L1124）正则匹配 + hook 调对应 CLI 把 stdout 包成 additionalContext |
 | 8.3 | hook 控制内容、模型只负责打印 | ✅ | `HELP_FASTPATH_WRAPPER`（L528）明确要求"把下列代码块**逐字**用 ```text 围栏包裹后输出，然后立即 end turn" |
-| 8.4 | 用户看到的"帮助模板丢失"是缓存问题，非代码 bug | ✅ | v0.7.0 tag 已 push；用户需要 `claude plugin marketplace update specode && claude plugin update specode` 重启 Claude Code |
+| 8.4 | 用户看到的"帮助模板丢失"是缓存问题，非代码 bug | ✅ | v0.7.0 tag 已 push；用户需在宿主 CLI 中执行 `plugin marketplace update specode && plugin update specode` 后重启宿主 |
 
 ---
 
@@ -256,7 +256,7 @@
 |---|---|---|---|
 | 16.1 | `/specode:continue` 没找到目录、obsidian.md 选择器格式不对 | ✅ 已修 | (a) 新增 `spec_session.py list-specs` 替代 Grep；(b) references/obsidian.md §5.1 显式禁止 Grep 项目目录；(c) obsidian.md §3 多 vault 选择器更新为 §3.7.1 类型 A 骨架（含 sentinel + 保留位） |
 | 16.2 | SKILL.md Document Root Resolution 优化 | ✅ | 该章节从约 25 行压到 5 行 + 链接 obsidian.md |
-| 16.3 | `/specode:spec -h` 帮助模板丢失 | ⚠️ 代码已正确 | `HELP_OUTPUT_TEXT` 是硬编码常量，`FAST_PATH_HELP` 正则匹配正确。你截图中的问题是 **plugin 缓存未更新**——v0.7.0 tag 刚 push，需 `claude plugin marketplace update specode && claude plugin update specode` 后重启 Claude Code 才生效 |
+| 16.3 | `/specode:spec -h` 帮助模板丢失 | ⚠️ 代码已正确 | `HELP_OUTPUT_TEXT` 是硬编码常量，`FAST_PATH_HELP` 正则匹配正确。你截图中的问题是 **plugin 缓存未更新**——v0.7.0 tag 刚 push，需在宿主 CLI 中 `plugin marketplace update specode && plugin update specode` 后重启宿主才生效 |
 | 16.4 | v0.7 / v0.8 一并实现 + 删除版本差异字样 | ✅ | task-swarm 6 个脚本 + 3 个 v0.8 hook 真实实现 + 全文档 v0.x 字样清理 |
 | 16.5 | 文档瘦身建议（特别 SKILL.md） | ✅ | 已给建议 + 已落地（SKILL.md 335 → 194 行） |
 
@@ -281,10 +281,10 @@
 ## 十八、如何验证
 
 ```sh
-# 1. 升级 plugin 缓存到 0.7.0
+# 1. 升级 plugin 缓存到 0.7.0（claude / codebuddy 任选你在用的那个）
 claude plugin marketplace update specode
 claude plugin update specode
-# 然后重启 Claude Code
+# 然后重启宿主 CLI
 
 # 2. 跑完整测试
 cd /Users/xueqiang/Git/specode

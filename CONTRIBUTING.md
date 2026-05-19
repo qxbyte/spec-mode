@@ -37,7 +37,7 @@ When adding behavior, prefer:
   scripts are CLIs, not importable modules).
 - Use `tmp_path` + `monkeypatch.setenv('HOME', tmp_path)` to keep tests
   isolated from real `~/.specode/`.
-- For hook tests, feed stdin payloads matching the Claude Code hook
+- For hook tests, feed stdin payloads matching the host CLI hook
   schema and assert against the JSON `additionalContext`.
 
 ## Hook safety contract
@@ -72,8 +72,8 @@ Public release procedure for plugin maintainers.
 
 ### Version manifests (must agree)
 
-Two manifests carry `version`. They MUST match or `claude plugin tag`
-refuses to operate:
+Two manifests carry `version`. They MUST match or the plugin tag tooling
+(`claude plugin tag` / equivalent) refuses to operate:
 
 - `plugins/specode/.claude-plugin/plugin.json` → `"version": "X.Y.Z"`
 - `.claude-plugin/marketplace.json` → `plugins[0].version: "X.Y.Z"`
@@ -85,7 +85,7 @@ that future runtime code introduces.
 
 | Bump | When | Examples |
 | --- | --- | --- |
-| **major** | A user feels a breaking change after `claude plugin update` | rename a slash command; remove an agent; rename a hook event |
+| **major** | A user feels a breaking change after a plugin update | rename a slash command; remove an agent; rename a hook event |
 | **minor** | Backwards-compatible new capability | new slash command; new agent; new optional label |
 | **patch** | Bug fix / docs / internal refactor with no surface change | fix a typo in a prompt; clarify a reference; CI-only |
 
@@ -114,9 +114,9 @@ claude plugin tag plugins/specode --push
 ```
 
 Tag format: `specode--v{version}` (annotated, message `specode {version}`).
-The plugin is **not** packaged into a tarball or registry artifact — Claude
-Code and CodeBuddy fetch the marketplace manifest directly from GitHub and
-resolve plugins by git tag. **Pushing the tag IS the release.**
+The plugin is **not** packaged into a tarball or registry artifact — host
+CLIs fetch the marketplace manifest directly from GitHub and resolve plugins
+by git tag. **Pushing the tag IS the release.**
 
 ### Re-tagging the same version
 

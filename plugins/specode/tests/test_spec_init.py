@@ -78,7 +78,7 @@ def test_spec_init_writes_sessions_file(
     sess_path = fake_home / ".specode" / "sessions" / f"{sid}.json"
     assert sess_path.exists()
     sess = json.loads(sess_path.read_text())
-    assert sess["claude_session_id"] == sid
+    assert sess["session_id"] == sid
     assert sess["mode"] == "active"
     assert sess["active_spec_slug"] == "gamma"
     assert sess["phase"] == "intake"

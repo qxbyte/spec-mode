@@ -44,6 +44,20 @@ def test_save_and_load_roundtrip(tmp_path):
     assert sm2.groups[0][0].number == 1
 
 
+def test_load_migrates_legacy_claude_session_id(tmp_path):
+    """老 state.json 字段名是 claude_session_id；StateMachine.load 应回填到 session_id 字段。"""
+    import json
+    sm = _make_sm(tmp_path)
+    state_path = StateMachine.state_path(Path(sm.run_dir))
+    data = json.loads(state_path.read_text())
+    # 模拟老 state.json：删除新 key，回退到老 key
+    data.pop("session_id", None)
+    data["claude_session_id"] = "legacy-sess-xyz"
+    state_path.write_text(json.dumps(data), encoding="utf-8")
+    sm2 = StateMachine.load(Path(sm.run_dir))
+    assert sm2.session_id == "legacy-sess-xyz"
+
+
 def test_begin_coding_sets_in_flight(tmp_path):
     sm = _make_sm(tmp_path)
     sm.begin_coding()

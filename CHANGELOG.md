@@ -4,6 +4,99 @@
 
 _no entries yet_
 
+## 0.8.0 (2026-05-19)
+
+### Changed — host-neutral wording + sessions schema field rename
+
+Two coordinated cleanups so the plugin reads as host-agnostic and the
+on-disk schema uses neutral key names.
+
+**1. Description neutralization across docs and code.** All
+user-facing wording that singled out one host CLI was reworded to
+neutral terms ("host CLI" / "宿主" / "CLI agent"). Affected files:
+
+- `README.md` / `README.zh-CN.md` — install section lists CodeBuddy
+  before Claude Code; tagline says "for CLI coding agents".
+- `SKILL.md` + 6 `references/*.md` — "Claude Code 内置 X 工具" → "宿主
+  内置 X 工具"; "Claude 窗口" / "Claude 会话" → 中性词。
+- `DESIGN.md` / `CHANGELOG.md` / `CONTRIBUTING.md` /
+  `IMPLEMENTATION-AUDIT.md` — same treatment.
+- `plugin.json` / `marketplace.json` description fields drop the
+  "(Claude Code + CodeBuddy)" suffix.
+- `spec_session.py` `HELP_OUTPUT_TEXT`, hook context strings, error
+  messages neutralized.
+
+Technical contracts retained verbatim because they are platform-
+injected, not stylistic: `CLAUDE_PLUGIN_ROOT` env var (with the
+existing `:-${CODEBUDDY_PLUGIN_ROOT}` fallback), `.claude-plugin/`
+directory name (plugin discovery protocol), the `claude plugin …`
+install commands users actually type.
+
+**2. Sessions / state.json schema: `claude_session_id` → `session_id`.**
+All write sites now produce the new key. Read sites are
+backwards-compatible:
+
+- `read_session()` (`spec_session.py:135`) auto-migrates legacy files
+  by copying `claude_session_id` → `session_id` in-memory; the next
+  write lands the new key on disk.
+- `StateMachine.load()` (`task_swarm_state.py:149`) does the same for
+  `~/.specode/runs/<run_id>/state.json` (renames the dataclass field
+  too: `sm.claude_session_id` → `sm.session_id`).
+- Lock holder reads (`list-specs`, `on-heartbeat-quiet`) fall back
+  through `holder → session_id → claude_session_id` in priority
+  order. The lock field's actual persisted key has always been
+  `holder`; the rename does not touch `<spec-dir>/.config.json`.
+
+No manual migration needed. Existing `~/.specode/sessions/*.json`
+and `state.json` files keep working; they get rewritten in the new
+schema on the next mutating CLI call.
+
+### Changed — command md files carry copy-pasteable CLI templates
+
+Every command md under `plugins/specode/commands/` now opens with an
+**「立即调用」** section that embeds the full `sh
+"${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh"
+"${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/<name>.py"
+<args>` template the model should execute. Motivation: a recent
+session showed the model looping six times on bare `python3
+spec_session.py …` invocations against the wrong cwd, because the
+command md only listed `/specode:continue $ARGUMENTS` and the model
+never consulted SKILL.md for the wrapper rule before retrying.
+
+SKILL.md also gained a "**CLI 调用规约（强制）**" subsection and an
+Iron Rule explicitly banning bare `python3` invocations.
+
+### Added — backwards-compat regression tests
+
+Two new tests pin the auto-migration behavior so future refactors
+can't quietly drop legacy support:
+
+- `test_read_session_migrates_legacy_claude_session_id`
+  (`tests/test_spec_session_business.py`).
+- `test_load_migrates_legacy_claude_session_id`
+  (`tests/test_task_swarm_state.py`).
+
+### Removed
+
+- `migrate-from-spec-mode.sh` — one-shot migration script for users
+  upgrading from 0.1.0's `spec-mode` plugin name. Long past its
+  usefulness window; deleted.
+
+### Tests
+
+154 pass (152 previous + 2 new compat regressions). All existing
+fixtures updated to write the new `session_id` key directly.
+
+### Migration
+
+None. Plugin cache update sufficient:
+
+```sh
+# Adjust the CLI name for whichever host you use (claude / codebuddy).
+claude plugin marketplace update specode
+claude plugin update specode
+```
+
 ## 0.7.3 (2026-05-19)
 
 ### Changed — all selector references unified to YAML three-section format
@@ -57,7 +150,7 @@ claude plugin update specode
 
 All 11 entries in `spec_session.py SELECTOR_PROMPTS` have been rewritten
 to a **three-section + YAML-indented** format that matches the
-"directly paste into Claude Code and the tool fires" prompt style
+"directly paste into the host CLI and the tool fires" prompt style
 the maintainer validated in another window.
 
 Each constant now has the same structure:
@@ -114,9 +207,10 @@ None. Existing sessions / specs unaffected; hooks behavior otherwise
 unchanged. Plugin cache update sufficient:
 
 ```sh
+# Adjust the CLI name for whichever host you use (claude / codebuddy).
 claude plugin marketplace update specode
 claude plugin update specode
-# restart Claude Code
+# restart the host CLI
 ```
 
 ## 0.7.1 (2026-05-19)
@@ -124,7 +218,7 @@ claude plugin update specode
 ### Changed — selector protocol switched to AskUserQuestion
 
 The 11 entries in `spec_session.py SELECTOR_PROMPTS` have been
-rewritten to instruct the model to call Claude Code's built-in
+rewritten to instruct the model to call the host CLI's built-in
 **`AskUserQuestion`** tool instead of emitting a markdown list with
 a `AWAITING_USER_CHOICE` sentinel and asking the user to reply with
 a number.
@@ -139,7 +233,7 @@ follows:
 
 Why this changes things:
 
-- The Claude Code tool renders arrow-key navigation + Enter to
+- The host tool renders arrow-key navigation + Enter to
   submit + ESC to cancel + auto-provided "Other" for free-text
   input. The user never types a number.
 - The historical reserved positions `Type something` / `Chat about
@@ -269,13 +363,13 @@ All hooks `exit 0`. `SPECODE_GUARD=off` short-circuits all of them.
 **without** any of the previous INV / exit-2 enforcement, on top of a new
 "advisory hooks + selector prompts + session-bound state" foundation.
 
-- **Session lifecycle bound to Claude `session_id`.** New per-session state
-  file at `~/.specode/sessions/<claude_session_id>.json` with fields
+- **Session lifecycle bound to host `session_id`.** New per-session state
+  file at `~/.specode/sessions/<session_id>.json` with fields
   `mode` (active / readonly / ended), `active_spec_slug`, `phase`,
   `lock_state`, `pending_selector`, ... — all writes are atomic
   (tempfile + `os.replace` + `os.fsync`) and rolled back on partial
-  failure. `<spec-dir>/.config.json` lock field uses `claude_session_id`
-  as holder key.
+  failure. `<spec-dir>/.config.json` lock field uses `holder` as the
+  persisted key.
 - **Persistent session is the only mode** — `--persist` flag removed.
   `/specode:spec <requirement>` always creates a persistent session;
   `/specode:end` writes `mode=ended` and hooks immediately stop
@@ -530,7 +624,7 @@ Users on 0.3.x upgrading to 0.4.0:
 ### Notes
 
 - `scripts/spec_guard.py` legitimately reads stdin (hook payload from
-  Claude Code / CodeBuddy, bounded JSON + immediate close) — annotated
+  the host CLI, bounded JSON + immediate close) — annotated
   with `# stdin-block: hook entry point` to satisfy the new scanner.
 
 ## 0.3.1 (2026-05-18)
@@ -701,7 +795,7 @@ they become advisory. Audit logs continue to record them.
 - New command `/task-swarm <spec-dir>/tasks.md` for manual triggering of
   task-swarm mode outside the standard selector flow.
 - New plugin subdirectory `agents/` carrying the 4 task-swarm subagents.
-  Claude Code auto-registers these (namespaced as `specode:task-swarm-*`).
+  The host CLI auto-registers these (namespaced as `specode:task-swarm-*`).
 - New references:
   - `references/task-swarm.md` — full protocol (single authority for editing
     behavior, subagent contract, write-back rules, loop semantics, iron-rule
@@ -733,7 +827,7 @@ they become advisory. Audit logs continue to record them.
 
 - **P0 — subagent_type must be plugin-prefixed**: dispatching with the
   bare name `Task(subagent_type="task-swarm-coder", ...)` is rejected by
-  Claude Code with `"Agent type not found"`. All 13 references in
+  the host CLI with `"Agent type not found"`. All 13 references in
   `commands/task-swarm.md` and `references/task-swarm.md` now use the
   fully-qualified `specode:task-swarm-coder` (and `-reviewer` /
   `-validator` / `-planner`). The `agents/*.md` frontmatter `name` is
@@ -772,7 +866,7 @@ detects and prints reminders for these.
 ### Phase 1 — bootstrap
 
 - Initial plugin skeleton.
-- `plugin.json` for Claude Code / CodeBuddy.
+- `plugin.json` consumed by the host CLI's plugin loader.
 - `hooks/hooks.json` wiring SessionStart / UserPromptSubmit / PreToolUse /
   PostToolUse / Stop / SessionEnd → `scripts/spec_guard.py`.
 - `scripts/spec_guard.py`: dispatch entry, audit-log every event, all
@@ -784,7 +878,7 @@ detects and prints reminders for these.
   `.active-specode.json` / per-spec `.config.json`. Owns
   `~/.specode/{sessions,.any-active}`. CLI: status / sync-sentinel /
   demo-activate / demo-deactivate.
-- `spec_guard.py`: SessionStart writes Claude-session record;
+- `spec_guard.py`: SessionStart writes the host-session record;
   UserPromptSubmit injects a status block via
   `hookSpecificOutput.additionalContext` when a spec is active; other
   handlers fast-exit when no active spec.
