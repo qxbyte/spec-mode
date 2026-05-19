@@ -9,7 +9,7 @@ hook injects guidance into the model's context (`exit 0` +
 `additionalContext`) and never blocks tool calls. State binds to the
 host's `session_id` so multiple windows stay disambiguated, and the
 six spec documents (`requirements.md` / `bugfix.md` / `design.md` /
-`tasks.md` / `implementation-log.md`; tasks.md carries a `## 测试要点` section that follows requirements/bugfix updates)
+`tasks.md` / `implementation-log.md`)
 remain the single source of truth.
 
 ## What you get

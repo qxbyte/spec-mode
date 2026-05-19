@@ -4,6 +4,75 @@
 
 _no entries yet_
 
+## 0.9.1 (2026-05-19)
+
+### Changed — `tasks.md ## 测试要点` 降权为"参考清单"
+
+0.9.0 在把 acceptance-checklist.md 折叠进 tasks.md 时过度强调了
+新 `## 测试要点` 节——把它包装成「跟随式更新铁律」、acceptance-gate
+验收硬条件、`DOC_PRIORITY_REMINDER` 每轮注入提示、spec-writer 5 处
+「同 turn 更新」、workflow.md §3.2 整章纪律……约 50 处分布在 12
+个文件，与节点本身只是「给测试人员一份验证清单参考」的实际地位
+严重不匹配。
+
+本版降权：
+
+- **`acceptance-gate` selector**（`spec_session.py` 与
+  `selectors.md` 镜像）—— 验收推荐只看 `tasks.md` 是否全 `[x]`，
+  测试要点降为"chat 简报里顺带提一下"的参考信息，不参与判定。
+- **`DOC_PRIORITY_REMINDER_ACTIVE`**（hook 每轮注入文本）—— 删
+  "同 turn 更新测试要点"那一行，文档清单里加一句注解说明 tasks.md
+  末尾有这一节即可。
+- **SKILL.md** —— 5 份文档列表 / 文档表格里不再标"同 turn 重写
+  测试要点"硬纪律；tasks.md 行改为「spec-writer 在 tasks phase
+  按 SHALL 补几行供测试人员参考」。
+- **`references/workflow.md`** —— 删 §3.2 整章
+  「tasks.md 测试要点跟随式更新（铁律）」；删 §3.1 / §4 / §5
+  各处「同 turn 更新测试要点」步骤；§7 acceptance phase 不再
+  要求"逐行跑测试要点 + 全 [x] 才推荐验收通过"，回到只看 tasks.md
+  完成度；§9.2 持续沟通模式不再强调测试要点；流程图去掉
+  「测试要点跟随式更新」列。后续 §3.3 / §3.4 重编号为 §3.2 / §3.3。
+- **`references/templates.md`** —— 删 §4.2 整节「填充规则」；§4
+  tasks.md 模板的 `## 测试要点` 示例从带 `[ ]` 改成纯 bullets
+  （表明非待办清单）；`## 验收` 节删「测试要点全部跨过」那行；
+  增设 §4.2「填充提示」短节说明 spec-writer 在 tasks phase
+  按 SHALL 顺手补几行即可，模糊时可留 `_待补充_`。
+- **`agents/spec-writer.md`** —— 删整个「## tasks.md 测试要点
+  同 turn 更新」section；phase=requirements / phase=bugfix 流程
+  里删「同 turn 更新测试要点」步骤；phase=tasks 加一句「填末尾
+  `## 测试要点` 节，按 SHALL 补几行供测试人员参考」。
+- **`references/iteration.md`** —— iteration 期间不再要求改测试
+  要点；累积规则降为「按需追加」；ASCII 示例从 `[ ] / [x]` checkbox
+  改成纯 bullets。
+- **README / README.zh-CN / DESIGN / IMPLEMENTATION-AUDIT** —— 顶层
+  描述去掉「跟随式」「同 turn 更新」措辞。
+
+### 不变（保留）
+
+- `assets/templates/tasks.md` 模板里的 `## 测试要点` 节本身保留
+- `spec_init.py FALLBACK_TEMPLATES["tasks.md"]` 里的 `## 测试要点`
+  节本身保留（格式从 `- [ ]` 改回纯 bullets）
+- `obsidian.md` 目录树里的 `tasks.md ← 末尾自带 ## 测试要点 章节`
+  说明保留（信息性）
+- `spec-writer agent` 在 tasks phase 仍负责按 SHALL 顺手补充
+  测试要点行（但作为 tasks 文档的一部分，不是独立铁律）
+
+### Tests
+
+153 pass（无净变化）。本版仅 docs/prompts 文字调整，无代码逻辑改变。
+
+### Migration
+
+无需迁移。`acceptance-gate` 推荐判定从「tasks.md 全 [x] + 测试要点
+全跨过」简化为「tasks.md 全 [x]」——对已经在用 0.9.0 的用户来说，
+验收门只会变得**更容易**通过，不会出现"以前能过、现在卡住"的情形。
+
+```sh
+# Adjust the CLI name for whichever host you use (claude / codebuddy).
+claude plugin marketplace update specode
+claude plugin update specode
+```
+
 ## 0.9.0 (2026-05-19)
 
 ### Removed — `acceptance-checklist.md` retired, test points moved into `tasks.md`

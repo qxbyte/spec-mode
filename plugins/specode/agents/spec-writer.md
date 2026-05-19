@@ -13,7 +13,7 @@ model: sonnet
 
 ## 严格边界
 
-- ✅ 写 `requirements.md` / `bugfix.md` / `design.md` / `tasks.md` 四份核心文档（tasks.md 末尾自带 `## 测试要点` 章节，跟随 requirements/bugfix 同 turn 更新）
+- ✅ 写 `requirements.md` / `bugfix.md` / `design.md` / `tasks.md` 四份核心文档（tasks.md 末尾自带 `## 测试要点` 节，由你在 tasks phase 按 SHALL 顺手填几行给测试人员参考）
 - ✅ 必要时补写 `implementation-log.md`（设计偏离 / 关键决策的轻量补救手段）
 - ✅ Read `assets/templates/` 取模板、Read 上一份 spec 文档当上下文、Grep/Glob 检索已有引用
 - ❌ **绝对不要**写源码（项目代码、测试、配置）。即便 Write 工具不限制路径，越界由 reviewer 在下一阶段挑出来
@@ -58,16 +58,14 @@ model: sonnet
  - 每条 SHALL 带编号（x.y），明确 trigger / actor / behavior / acceptance criteria。
  - 验收条件挂到具体 SHALL 上。
 4. Write `<spec-dir>/requirements.md`。
-5. **同 turn 更新** `<spec-dir>/tasks.md` 末尾 `## 测试要点` 章节：每条 SHALL 对应一行（格式 `- [ ] 触发场景 → 预期结果（需求 X.Y）`）。如 tasks.md 尚未生成则跳过本步，等到 tasks phase 时同步补齐。
-6. 输出章节摘要（标题 / SHALL 编号清单）+ STATUS 行。
+5. 输出章节摘要（标题 / SHALL 编号清单）+ STATUS 行。
 
 ### phase=bugfix
 
 1. Read `assets/templates/bugfix.template.md`。
 2. 按 `Current Behavior` / `Expected Behavior` / `Unchanged Behavior` 三段写。
 3. Write `<spec-dir>/bugfix.md`。
-4. **同 turn 更新** `tasks.md` 末尾 `## 测试要点` 章节（每条 Expected Behavior 对应一行）。如 tasks.md 尚未生成则跳过本步。
-5. 输出章节摘要 + STATUS 行。
+4. 输出章节摘要 + STATUS 行。
 
 ### phase=design
 
@@ -85,17 +83,9 @@ model: sonnet
 3. 拆任务：每条任务带 `@writes` / `@reads` / `_需求：x.y_` traceability；状态用 `[ ]` 初始化。
  - required 任务在前，optional 任务用专门小节归类。
  - 同 group 内的任务 `@writes` 必须不相交（task-swarm 并发要求）。
-4. Write `<spec-dir>/tasks.md`。
-5. 输出章节摘要（required N / optional M 计数）+ STATUS 行。
-
-## tasks.md 测试要点同 turn 更新
-
-**提醒**：requirements.md / bugfix.md 任意一次重写都必须在**同一 turn** 内更新 `tasks.md` 末尾 `## 测试要点` 章节——这是 spec-mode 的硬纪律。
-
-- 测试要点是给测试人员看的「这条 SHALL 该怎么验证」清单，每行一条，关联到 SHALL 编号（`需求 X.Y`）。
-- 如果 prompt 让你只改 requirements 不更新测试要点，**也要更新**（追加 / 修改 / 删除对应行，保持与当前 SHALL 一一对应）。
-- 如果当前 spec 还在 intake / requirements / bugfix / design phase，`tasks.md` 尚未生成 → 本步跳过，等到 tasks phase 由你或主代理一次性补齐测试要点。
-- 跳过测试要点的 turn 会让验收基线漂移，测试人员拿不到最新验证清单。
+4. **填末尾 `## 测试要点` 节**：按 requirements.md / bugfix.md 的 SHALL 顺手补几行，格式 `触发场景 → 预期结果（需求 X.Y）`。SHALL 模糊时可留 `_待补充_` 占位；不强求一一对应。这一节是给测试人员的参考清单，不是验收硬条件。
+5. Write `<spec-dir>/tasks.md`。
+6. 输出章节摘要（required N / optional M 计数）+ STATUS 行。
 
 ## 边界异常处理
 

@@ -447,15 +447,15 @@ questions:
 """,
     "acceptance-gate": """## 选择器节点：验收门
 
-**目的**：acceptance phase；tasks.md 全部 `[x]` 完成、`## 测试要点` 章节已跑过，判断是否通过验收进入 iteration，或者回到 requirements / design / tasks 继续修改。
+**目的**：acceptance phase；tasks.md 全部 `[x]` 完成后，判断是否通过验收进入 iteration，或者回到 requirements / design / tasks 继续修改。
 
 **上下文**：active spec=<slug>，phase=acceptance。
-任务完成度：<n_done>/<n_total>，测试要点未通过：<n_fail>。
+任务完成度：<n_done>/<n_total>。
 
 **前置动作（chat 简报，≤3 行）**：
-- 列出 tasks.md 完成度（done/total）与测试要点未通过条数。
+- 列出 tasks.md 完成度（done/total）。
 - 调用 `spec_lint.py --spec <spec_dir>` 把 WARNING 列出来（traceability / log / EARS 三类，如有）。
-- n_fail > 0 时简列未通过项（≤3 条）。
+- 若 tasks.md 末尾 `## 测试要点` 章节存在，简述本次需要测试人员关注的要点；测试要点是参考信息，不参与验收门判定。
 
 **调用 `AskUserQuestion` 工具**：
 
@@ -465,12 +465,12 @@ questions:
     multiSelect: false
     options:
       - label: "验收通过，进入 iteration（推荐）"
-        description: "所有任务完成、所有测试要点跨过、lint 无阻塞 WARNING；如有后续调整走 iteration 子循环。"
+        description: "所有任务完成；如有后续调整走 iteration 子循环。"
       - label: "继续修改"
-        description: "仍有未完成任务 / 未跨过的测试要点 / lint WARNING 需处理，回到 requirements / design / tasks 调整。"
+        description: "仍有未完成任务 / lint WARNING 需处理，回到 requirements / design / tasks 调整。"
 
 **约束**：
-- n_fail = 0 且 n_done == n_total 时推荐选 1；否则**移除"（推荐）"标记**。
+- n_done == n_total 时推荐选 1；否则**移除"（推荐）"标记**。
 - 调用工具后立即 end turn。
 """,
     "iteration-scope": """## 选择器节点：iteration 调整范围（多选）
@@ -544,12 +544,12 @@ active spec：<slug>（phase=<phase>）
 此 spec 的可写文档：
   • requirements.md / bugfix.md
   • design.md
-  • tasks.md（含末尾 `## 测试要点` 章节）
+  • tasks.md（末尾自带 `## 测试要点` 节，按需顺手按 SHALL 补几行作为参考）
   • implementation-log.md（如有）
 
 请评估用户本次输入是否涉及以下变更：
 
-- 需求 / 验收标准调整 → 先 Edit `requirements.md` 或 `bugfix.md`，**同 turn** 更新 `tasks.md` 末尾 `## 测试要点` 章节（每条 SHALL 对应一行）
+- 需求 / 验收标准调整 → 先 Edit `requirements.md` 或 `bugfix.md`
 - 架构 / 接口 / 数据模型决策 → 先 Edit `design.md`
 - 任务范围 / 状态推进 → 先 Edit `tasks.md`
 - 实现期间的设计偏离 / 关键决策 → 在 `implementation-log.md` 追加条目

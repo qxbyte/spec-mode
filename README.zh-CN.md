@@ -4,7 +4,7 @@
 
 面向 CLI 编码代理的规格驱动工作流插件。
 
-本插件**全部 hook 改为提醒式**——每个 hook 只往模型上下文里注入提示文本（`exit 0` + `additionalContext`），**永不阻断**工具调用。状态绑定到宿主注入的 `session_id`（多窗口天然不混淆），五份 spec 文档（`requirements.md` / `bugfix.md` / `design.md` / `tasks.md` / `implementation-log.md`）仍是事实源；tasks.md 末尾自带 `## 测试要点` 章节，跟随 requirements/bugfix 同 turn 更新。
+本插件**全部 hook 改为提醒式**——每个 hook 只往模型上下文里注入提示文本（`exit 0` + `additionalContext`），**永不阻断**工具调用。状态绑定到宿主注入的 `session_id`（多窗口天然不混淆），五份 spec 文档（`requirements.md` / `bugfix.md` / `design.md` / `tasks.md` / `implementation-log.md`）仍是事实源。
 
 ## 能力概览
 

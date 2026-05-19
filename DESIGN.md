@@ -16,7 +16,7 @@
 3. **hook 仅做注入式提醒，永远不阻断**：所有 hook `exit 0`，通过 `hookSpecificOutput.additionalContext` JSON 把"该做什么"注入到模型的上下文里。**禁止 `exit 2` 阻断**，这是与 0.4.0 hook 模型的根本切割。模型可以无视 hook 的提示（代价是流程出错），但 hook 不会替模型决定终止哪次工具调用。
 4. **Selector 由模型按统一模板生成，不再有"选择器生成脚本"**：删除 `spec_choice.py` 这类"脚本输出 selector 文本"的中间层。每个 phase-gate 节点由 `UserPromptSubmit` hook 在合适时机注入"此处该呈现 X 选择器"的模板提示，模型自行格式化输出，并以 `AWAITING_USER_CHOICE` sentinel 结尾。Hook 知道当前 phase，模型负责生成文本——两层各做各的事。
 5. **文档-代码同步用"双侧提醒 hook"实现，不再叫 INV-1/INV-2**：
- - **输入侧**（`UserPromptSubmit`）：用户每次提交 prompt 时，hook 列出 spec 的 5 份文档名（`requirements.md` / `bugfix.md` / `design.md` / `tasks.md` / `implementation-log.md`，tasks.md 末尾自带 `## 测试要点` 章节），提醒模型"用户本次输入是否需要变更某份文档？如是请先 Edit 文档再处理代码"。
+ - **输入侧**（`UserPromptSubmit`）：用户每次提交 prompt 时，hook 列出 spec 的 5 份文档名（`requirements.md` / `bugfix.md` / `design.md` / `tasks.md` / `implementation-log.md`），提醒模型"用户本次输入是否需要变更某份文档？如是请先 Edit 文档再处理代码"。
  - **输出侧**（`Stop`）：模型 turn 结束前，hook 提醒"如果本 turn 改了代码，请决定是否需要同步更新对应文档"。
  - 两个 hook 都**只注入提示文本，永远 exit 0**，由模型自己判断是否落实。代价是 next session 可能丢上下文——但这是模型可见、可问责的事，比 hook exit 2 阻断后的反复试错更健康。
 6. **SKILL.md + CLI 工具协作**：
@@ -686,15 +686,15 @@ active spec: <slug>（phase=<phase>）
 ## ⛔ 必须呈现「验收结论」选择器（类型 A 单列单选）
 
 active spec: <slug>（phase=acceptance）
-tasks.md 全部 [x] 完成、`## 测试要点` 章节已跑过。任务完成度：<n_done>/<n_total>，测试要点未通过：<n_fail>。
+tasks.md 全部 [x] 完成。任务完成度：<n_done>/<n_total>。
 
 标题：验收结论
 正式选项（**逐字使用**）：
 
  1. 验收通过，进入 iteration（推荐）
- 所有任务完成、所有测试要点跨过、lint 无阻塞 WARNING；如有后续调整走 iteration 子循环。
+ 所有任务完成；如有后续调整走 iteration 子循环。
  2. 继续修改
- 仍有未完成任务 / 未跨过的测试要点 / lint WARNING 需处理，回到 requirements / design / tasks 调整。
+ 仍有未完成任务 / lint WARNING 需处理，回到 requirements / design / tasks 调整。
 
 请按 §3.7.1 类型 A 骨架输出（编号 1-2 + 保留位 3 Type something + 4 Chat about this）。
 推荐选项编号：1（当 n_fail=0）；其他情况无推荐。
@@ -753,7 +753,7 @@ active spec: <slug>（phase=iteration）
 | `requirements.md` | 需求-first 工作流的需求文档（EARS SHALL 写法） | 需求 / 验收标准调整 |
 | `bugfix.md` | bugfix 工作流的问题描述（与 requirements.md 互斥） | 缺陷范围 / 复现步骤 / 期望行为调整 |
 | `design.md` | 技术设计（架构 / 接口 / 数据模型） | 架构 / 接口 / 数据模型决策调整 |
-| `tasks.md` | 任务拆分 + 进度 + `_需求：x.y_` traceability + 末尾 `## 测试要点`（跟随 requirements/bugfix） | 任务范围调整 / 状态推进 `[ ]` → `[~]` → `[x]`；requirements/bugfix 改动后**同 turn**更新测试要点 |
+| `tasks.md` | 任务拆分 + 进度 + `_需求：x.y_` traceability + 末尾 `## 测试要点`（给测试人员参考） | 任务范围调整 / 状态推进 `[ ]` → `[~]` → `[x]` |
 | `implementation-log.md` | 实现记录（可选；记录设计偏离 / 关键决策） | 实施期间记录设计偏离、解决方案、技术决策 |
 
 #### 3.8.2 `on-user-prompt` 注入的「输入侧」提醒文本
@@ -767,12 +767,12 @@ active spec：<slug>（phase=<p>）
 此 spec 的可写文档：
  • requirements.md / bugfix.md
  • design.md
- • tasks.md（含末尾 `## 测试要点` 章节）
+ • tasks.md（末尾自带 `## 测试要点` 节，按需顺手按 SHALL 补几行作为参考）
  • implementation-log.md（如有）
 
 请评估用户本次输入是否涉及以下变更：
 
-- 需求 / 验收标准调整 → 先 Edit `requirements.md` 或 `bugfix.md`，**同 turn** 更新 `tasks.md` 末尾 `## 测试要点` 章节
+- 需求 / 验收标准调整 → 先 Edit `requirements.md` 或 `bugfix.md`
 - 架构 / 接口 / 数据模型决策 → 先 Edit `design.md`
 - 任务范围 / 状态推进 → 先 Edit `tasks.md`
 - 实现期间的设计偏离 / 关键决策 → 在 `implementation-log.md` 追加条目
@@ -887,7 +887,7 @@ workflow 选择器
 - **谁持锁**：始终是主会话。subagent 不直接持锁、不直接 verify-lock。
 - **何时进入 task-swarm**：tasks.md 确认后，"任务执行"选择器（§3.7.2）若选中"用 task-swarm 多 agent 并发"，主会话切到 task-swarm 编排模式（按 `commands/specode:task-swarm.md` 协议）。
 - **何时退出**：所有 group 完成（writeback 写完最后一组），主会话返回 spec-mode 的 implementation→acceptance 通路。
-- **退出 task-swarm 后**：`tasks.md` 末尾 `## 测试要点` 仍由主会话逐行跑，validator 的 pass 不等价于 spec acceptance（lint + 用户验收 selector 仍需走完）。
+- **退出 task-swarm 后**：validator 的 pass 不等价于 spec acceptance（lint + 用户验收 selector 仍需走完）。
 - **tasks.md 写回**：永远走 `task_swarm.py writeback`。CLI 严格 diff——只允许 checkbox toggle + `> ` 注释块。的 `on-pre-tool-use` hook 在主会话直写 tasks.md 时**提醒**（不阻断）。
 - **heartbeat**：主编排器每 5 分钟 / 每完成一个 subagent 后调一次 `task_swarm.py heartbeat`（透传给 `spec_session.py heartbeat`）。
 - **stage 收敛规则**（保留 0.3.0 语义）：
@@ -914,7 +914,7 @@ model: sonnet
 
 **职责边界**：
 
-- ✅ 写 `requirements.md` / `bugfix.md` / `design.md` / `tasks.md`（tasks.md 末尾 `## 测试要点` 章节跟随 requirements/bugfix 同 turn 更新）
+- ✅ 写 `requirements.md` / `bugfix.md` / `design.md` / `tasks.md`（tasks.md 末尾 `## 测试要点` 节在 tasks phase 顺手按 SHALL 补几行给测试人员参考，非硬纪律）
 - ❌ 不写源码（虽然 Write/Edit 工具层不约束路径，但 prompt 协议明确要求只写 spec 文档；越界由 reviewer 在下一阶段挑出来）
 - ❌ 不切 phase
 - ❌ 不动 `.config.json` / 锁

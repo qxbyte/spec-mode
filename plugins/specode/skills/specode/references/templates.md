@@ -1,6 +1,6 @@
 # Spec Document Templates
 
-5 份 spec 文档的章节模板与 EARS SHALL 写法。`spec-writer` agent（工具白名单 `Read, Write, Edit, Grep, Glob`，无 Bash）按本文件生成文档。tasks.md 末尾自带 `## 测试要点` 章节，跟随 requirements/bugfix 同 turn 更新（详见 §4）。
+5 份 spec 文档的章节模板与 EARS SHALL 写法。`spec-writer` agent（工具白名单 `Read, Write, Edit, Grep, Glob`，无 Bash）按本文件生成文档。tasks.md 末尾自带 `## 测试要点` 节，spec-writer 在 tasks phase 按 SHALL 补几行作为测试人员参考。
 
 ## 0. 命名约定
 
@@ -9,7 +9,7 @@
 | `requirements.md` | 需求-first / design-first 工作流的需求文档 | 与 `bugfix.md` 互斥 |
 | `bugfix.md` | bugfix 工作流的问题描述 | 与 `requirements.md` 互斥 |
 | `design.md` | 技术设计文档 | — |
-| `tasks.md` | 任务拆分 + 进度 + traceability + 末尾 `## 测试要点`（跟随 requirements / bugfix 同 turn 更新） | — |
+| `tasks.md` | 任务拆分 + 进度 + traceability + 末尾 `## 测试要点`（spec-writer tasks phase 按 SHALL 顺手补充，给测试人员参考） | — |
 | `implementation-log.md` | 实现记录（可选） | — |
 
 每份文档头部固定四行 metadata：
@@ -329,18 +329,17 @@ Review Status: unreviewed
 
 ## 测试要点
 
-> 跟随 `requirements.md` / `bugfix.md` 同步更新；每行对应一条 SHALL，供测试人员快速了解验证场景。acceptance phase 时主代理逐行跑：通过改 `[x]`、跳过改 `[-]`（附原因）、未通过留 `[ ]`。
+供测试人员快速了解需要验证的场景。spec-writer 在 tasks phase 按 requirements.md / bugfix.md 的 SHALL 顺手补几行，每行关联 SHALL 编号。非验收硬条件，acceptance phase 时主代理把这一节简述给用户作参考即可。
 
-- [ ] 输入少于 8 位密码点击提交 → 系统提示"密码长度不足"（需求 1.1）
-- [ ] 连续 5 次错误密码登录 → 账号锁定 15 分钟（需求 1.2）
-- [ ] 已登录用户访问 /api/user → 返回当前用户信息（需求 2.1）
+- 输入少于 8 位密码点击提交 → 系统提示"密码长度不足"（需求 1.1）
+- 连续 5 次错误密码登录 → 账号锁定 15 分钟（需求 1.2）
+- 已登录用户访问 /api/user → 返回当前用户信息（需求 2.1）
 
 ## 验收
 
 - [ ] 所有 required 任务完成。
 - [ ] 所有指定验证命令通过。
 - [ ] 未完成或跳过的 optional 任务已记录。
-- [ ] 测试要点全部跨过（`[x]` / `[-]`，无遗留 `[ ]`）。
 - [ ] 用户确认验收。
 ```
 
@@ -366,24 +365,18 @@ Review Status: unreviewed
 - 跳过任务 → `[-]` + 在 chat / log 说明原因。
 - 可选任务：用户选 `开始 required` 时不动；选 `开始 required + optional` 时也走 `[ ] → [~] → [x]` 流程。
 
-### 4.2 `## 测试要点` 章节填充规则
+### 4.2 `## 测试要点` 节填充提示
 
-跟随式更新 —— `requirements.md` / `bugfix.md` 改动 → **同 turn** 更新本章节。无独立确认门。
+spec-writer 在 tasks phase 生成 tasks.md 时，按 requirements.md / bugfix.md 的 SHALL **顺手**补几行：
 
-- 每条 EARS `SHALL` 语句 → 一行 `- [ ] 触发场景 → 预期结果（需求 X.Y）`：
- - **触发场景** = 测试人员可执行的**具体动作**（禁止"触发该能力"这种泛化叙述；必须可执行）。
- - **预期结果** = 直接引用 SHALL 后的期望行为。
- - **需求 X.Y** = SHALL 在 requirements.md 的编号，与 tasks 上方 `_需求：x.y_` traceability 标签对齐。
-- **禁止保留** templates 里 `_agent 待填充_` 等占位行。
-- 验证命令行不写在测试要点里——那是 tasks.md 主体子任务的「验证：xxx」小项的事。
+- 每行格式 `触发场景 → 预期结果（需求 X.Y）`（不带 checkbox；这一节是参考清单而非任务清单）
+- **触发场景**：测试人员可执行的具体动作
+- **预期结果**：SHALL 后的期望行为
+- **需求 X.Y**：requirements.md 的 SHALL 编号
 
-acceptance phase 跑完后逐行更新：
+非硬纪律——SHALL 模糊或 spec-writer 一时拿不准时可以留 `_待补充_` 占位；后续 acceptance 时主代理也可以补。不要把这一节当成验收门——验收只看 tasks.md 是否全 `[x]`。
 
-- 通过 → `[x]`
-- 跳过 → `[-]`（在 chat / log 说明原因）
-- 未通过 → 留 `[ ]`，在 chat 说明实际表现 + 在 implementation-log.md 追加条目
-
-iteration 子循环里追加新行（对应本轮新增 SHALL），旧行根据需要保留或标记，详见 `references/iteration.md`。
+iteration 子循环按需追加新行，详见 `references/iteration.md`。
 
 ## 5. `implementation-log.md`
 

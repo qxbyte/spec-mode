@@ -25,7 +25,7 @@ intake → requirements / bugfix → design → tasks → implementation → acc
 | Phase | 一句话 | 允许操作 |
 |---|---|---|
 | `implementation` | 正在写代码兑现 tasks | 编辑代码、改 tasks 状态、追加 implementation-log |
-| `acceptance` | 代码写完，跑 UAT | 改 tasks.md 测试要点；不允许新功能改动（只允许回退 / 测试修复） |
+| `acceptance` | 代码写完，跑 UAT | 不允许新功能改动（只允许回退 / 测试修复） |
 | `iteration` | 已交付，等待下一轮演进 | 全部允许；需求变更走子循环 |
 
 ## 2. 触发条件
@@ -56,12 +56,12 @@ iteration ← 默认停留状态
  │ → acceptance-gate 通过 → 自动回到 iteration（round +1）
  │
  ├─ 用户："改一下 acceptance 里某条规则"
- │ → 直接编辑 tasks.md 末尾 `## 测试要点` 对应行
+ │ → 直接编辑 tasks.md 对应任务或末尾 `## 测试要点` 行
  │ →（不需走完整子循环 —— 视为微调）
  │
  ├─ 用户："只重跑测试"
- │ → 不改文档，跑 tasks.md `## 测试要点` 中的每条触发场景
- │ → 更新对应行的 `[ ]` → `[x]` / `[-]`
+ │ → 不改文档，跑 tasks.md 任务对应的"验证：xxx"小项
+ │ → 更新 implementation-log 记录实际结果
  │
  └─ 用户：/specode:end
  → 释放 session 锁，sessions/<id>.json.mode=ended
@@ -71,7 +71,6 @@ iteration ← 默认停留状态
 iteration 期间所有 phase 限制**放松**：
 
 - 可重走 requirements → design → tasks → implementation 子循环。
-- 可直接改 tasks.md `## 测试要点` 章节。
 - 可直接补 implementation-log.md。
 - 但**仍**走 phase-transition CLI 切换子 phase —— 不要手改 `.config.json.currentPhase`。
 
@@ -101,7 +100,7 @@ iteration 期间所有 phase 限制**放松**：
 | `requirements.md` | **原内容不动**；末尾追加 `## 迭代 N 新增需求` 节；新 SHALL 编号前缀 `[迭代 N]`，如 `[迭代 2] 5.1 WHEN ... SHALL ...`。原编号继续延续（不重排）。 |
 | `bugfix.md` | 同 requirements.md：末尾追加 `## 迭代 N 新增问题` 节；新条目带 `[迭代 N]` 前缀。 |
 | `design.md` | 原节内**可修改**；必须在 `## 变更历史` 节追加 `### 迭代 N` 子节（无此节则创建），说明本轮架构 / 接口 / 数据模型变更。原节内修改的地方留 `<!-- [迭代 N] -->` 注释标记。 |
-| `tasks.md` | 原 `[x]` 任务**不清理**；新任务追加 `## 迭代 N 任务` 节；任务编号续延（如旧最后是 `5.`，新任务从 `6.` 起）；新任务 traceability 引用 requirements.md 的 `[迭代 N]` 前缀编号。末尾 `## 测试要点` 章节追加新行（对应本轮新增 SHALL），旧行可保留或标记 `[迭代 N-1]`。 |
+| `tasks.md` | 原 `[x]` 任务**不清理**；新任务追加 `## 迭代 N 任务` 节；任务编号续延（如旧最后是 `5.`，新任务从 `6.` 起）；新任务 traceability 引用 requirements.md 的 `[迭代 N]` 前缀编号。末尾 `## 测试要点` 节可按需追加新行供测试人员参考。 |
 | `implementation-log.md` | 按日期继续追加，每条记录开头加 `[迭代 N]` 前缀。 |
 
 ### 5.1 累积示例
@@ -151,14 +150,14 @@ iteration 期间所有 phase 限制**放松**：
 ```
 
 ```markdown
-（tasks.md 末尾 `## 测试要点` 追加新行后片段）
+（tasks.md 末尾 `## 测试要点` 按需追加新行后片段）
 
 ## 测试要点
 
-- [x] 输入少于 8 位密码点击提交 → 系统提示"密码长度不足"（需求 1.1）  <!-- 已验收（迭代 1） -->
-- [x] 连续 5 次错误密码登录 → 账号锁定 15 分钟（需求 1.2）  <!-- 已验收（迭代 1） -->
-- [ ] [迭代 2] 输入弱密码（如 12345678）→ 提示"密码强度不足"（需求 5.1）
-- [ ] [迭代 2] 修改密码时复用历史密码 → 拒绝并提示原因（需求 5.2）
+- 输入少于 8 位密码点击提交 → 系统提示"密码长度不足"（需求 1.1）
+- 连续 5 次错误密码登录 → 账号锁定 15 分钟（需求 1.2）
+- [迭代 2] 输入弱密码（如 12345678）→ 提示"密码强度不足"（需求 5.1）
+- [迭代 2] 修改密码时复用历史密码 → 拒绝并提示原因（需求 5.2）
 ```
 
 ## 6. `/specode:continue` 进入 iteration 的判断

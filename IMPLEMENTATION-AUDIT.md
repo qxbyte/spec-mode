@@ -106,7 +106,7 @@
 |---|---|---|---|
 | 7.1 | 不阻断、纯强提醒 | ✅ | `hook_on_user_prompt` / `hook_on_stop` 都通过 additionalContext 注入，永远 exit 0 |
 | 7.2 | 用户输入后提醒"是否需要变更文档" | ✅ | `hook_on_user_prompt` 第 (b) 段「📝 文档优先提醒（输入侧）」固定列出 6 份 spec 文档名 |
-| 7.3 | 列出几份 spec 文档名 | ✅ | 0.9.0 起 5 份：requirements.md / bugfix.md / design.md / tasks.md（末尾 `## 测试要点`） / implementation-log.md（SKILL.md §Code-Doc Sync Reminders + spec_session.py 内常量） |
+| 7.3 | 列出几份 spec 文档名 | ✅ | 0.9.0 起 5 份：requirements.md / bugfix.md / design.md / tasks.md（末尾自带 `## 测试要点` 节给测试人员参考，0.9.1 起降为非硬纪律）/ implementation-log.md（SKILL.md §Code-Doc Sync Reminders + spec_session.py 内常量） |
 | 7.4 | 一轮对话结束后提醒代码-文档同步 | ✅ | `hook_on_stop` 注入「🔄 代码-文档同步提醒（输出侧）」，列出 3 项自检（tasks.md 状态 / implementation-log.md / design.md 接口契约） |
 | 7.5 | 仅提醒、由模型决文档更新 | ✅ | hook 文本明确"本提醒**不阻断**——是否补齐由你判断；但代价是 next session 时未写入文档的变更**全部丢失**" |
 
@@ -272,7 +272,7 @@
 | 17.4 | audit log / telemetry | 🗑️ 显式放弃 | 不再写 `~/.specode/audit/`、`~/.specode/telemetry.jsonl` |
 | 17.5 | 跨 session resume task-swarm run | ⚠️ 未实现 | state.json 在磁盘，但当前实现要求新 session 重新 init；resume 流可作 v0.8 patch（若需要请告知） |
 | 17.6 | `task-swarm` 第二组并发分组 partial replay | ⚠️ 未实现 | 当前只支持完整 run；group N 失败后重跑 group N 完整流程，不支持 stage-N 单点重派 |
-| 17.7 | implementation-log.md 模板放 assets/ | ⚠️ fallback 骨架 | spec_init.py 用 hardcoded 最小骨架而不是 assets/templates 文件（若需要可单独补）。acceptance-checklist.md 已于 0.9.0 移除，相关测试点迁移到 tasks.md `## 测试要点` 章节 |
+| 17.7 | implementation-log.md 模板放 assets/ | ⚠️ fallback 骨架 | spec_init.py 用 hardcoded 最小骨架而不是 assets/templates 文件（若需要可单独补）。acceptance-checklist.md 已于 0.9.0 移除，相关测试点迁移到 tasks.md `## 测试要点` 章节（0.9.1 起降为非硬纪律，供测试人员参考） |
 | 17.8 | iteration-scope 选择器自动呈现 | ⚠️ 未自动呈现 | 当前 SKILL.md 让模型在 iteration phase 自行判断是否呈现；选择器常量已就位（SELECTOR_PROMPTS["iteration-scope"]） |
 | 17.9 | reviewer 单实例 vs 大 group 上下文超限 | ⚠️ 未处理 | 单 group 含 10+ stage 时 reviewer 可能上下文不够；DESIGN.md §9 列为未决项 |
 
