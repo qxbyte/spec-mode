@@ -4,6 +4,46 @@
 
 _no entries yet_
 
+## 0.8.1 (2026-05-19)
+
+### Changed — `references/prompts.md` renamed to `references/selectors.md`
+
+The file name `prompts.md` was too generic for a document whose
+content is "AskUserQuestion selector specification + 8 fixed scenario
+constant library". `selectors.md` matches the file's own title
+("Selectors — AskUserQuestion 调用规范") and aligns with the
+single-word file naming convention used by the other references
+(`workflow.md`, `templates.md`, `iteration.md`, …).
+
+Renamed via `git mv` so history follows. All 23 in-repo references
+were updated (SKILL.md, 5 cross-references in `references/*.md`,
+DESIGN.md, IMPLEMENTATION-AUDIT.md). Earlier `CHANGELOG.md` entries
+that mention `prompts.md` were **left untouched** because they
+reflect the actual file name at the time of those releases.
+
+### Added — type variant A+ registered (single-select + preview)
+
+`references/selectors.md` now documents the **A+ variant**: when an
+option carries a `preview` field, the host UI auto-switches to a
+side-by-side layout (vertical option list on the left, monospace
+markdown preview on the right that updates as the user moves the
+focus). Single-select only — `multiSelect=true` rejects `preview`.
+
+Currently **no fixed scenario uses A+** — this is template-only,
+registered ahead of any phase-gate that needs visual artifact
+comparison (UI mockups / code snippets / config variants). If a
+future scenario adopts A+, add the constant to
+`spec_session.py SELECTOR_PROMPTS` and append it to the 8-scenario
+table below the variant note.
+
+### Tests
+
+154 pass; no test changes.
+
+### Migration
+
+None.
+
 ## 0.8.0 (2026-05-19)
 
 ### Changed — host-neutral wording + sessions schema field rename

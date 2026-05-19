@@ -75,7 +75,7 @@ plugins/specode/
  workflow.md
  lock-protocol.md
  obsidian.md
- prompts.md
+ selectors.md
  templates.md
  iteration.md
  task-swarm.md ← v0.7
@@ -109,8 +109,8 @@ plugins/specode/
 | EARS SHALL 写法 + `_需求：x.y_` traceability | `references/templates.md` | `skills/specode/references/templates.md` + `assets/templates/` | 完整迁移 |
 | 锁协议（`<spec-dir>/.config.json` 的 lock 字段；acquire / release / heartbeat / verify-lock） | `references/lock-protocol.md` | `skills/specode/references/lock-protocol.md` + `spec_session.py` | 完整迁移，去掉"INV-3 阻断" |
 | Obsidian vault 三层根目录解析 | `references/obsidian.md` | `skills/specode/references/obsidian.md` + `spec_vault.py` + `spec_init.py` | 完整迁移；三层 miss → hard stop + 引导，不发明 fallback |
-| 澄清子流程（Template B + 澄清完成 selector） | `references/prompts.md` | `skills/specode/references/prompts.md` | 完整迁移；选择器**模板化**，不再用脚本输出 |
-| 文档确认 / 任务执行 / 接管 / 验收 selector | `references/prompts.md` | 同上 | 完整迁移；任务执行 selector "task-swarm 多 agent 并发"；统一格式见 §3.7 |
+| 澄清子流程（Template B + 澄清完成 selector） | `references/selectors.md` | `skills/specode/references/selectors.md` | 完整迁移；选择器**模板化**，不再用脚本输出 |
+| 文档确认 / 任务执行 / 接管 / 验收 selector | `references/selectors.md` | 同上 | 完整迁移；任务执行 selector "task-swarm 多 agent 并发"；统一格式见 §3.7 |
 | Iteration 文档累积规则 | `references/iteration.md` | `skills/specode/references/iteration.md` | 完整迁移 |
 | Spec 文档名前缀解析（`<名称>：<内容>`） | `references/workflow.md` §intake | SKILL.md + `spec_init.py --name` | 完整迁移 |
 | 多窗口接管三选项（强制 / 只读 / 取消） | `references/lock-protocol.md` | 同 lock-protocol.md | 完整迁移 |
@@ -1170,8 +1170,8 @@ v0.6 完成后获得："session 生命周期管理 + 选择器提醒 + 双侧文
  - 新增 §Selectors：选择器统一骨架（§3.7.1）+ 6 个场景表（§3.7.2）+ 看到 hook 提醒时的强约束（§3.7.4）。
  - 新增 §Code-Doc Sync Reminders：6 份文档清单（§3.8.1）+ 看到双侧提醒后的响应约束（§3.8.4）。
  - 新增 §Help Fast-path：`/specode:spec -h` 必须逐字打印 hook 注入的帮助文本（§3.6）。
-8. 补 `skills/specode/references/{workflow,lock-protocol,obsidian,prompts,templates,iteration}.md`。
- - `prompts.md` 改写：从"调用 `spec_choice.py` 的命令样例"改成"6 个场景的标题/选项常量表 + 输出格式"。
+8. 补 `skills/specode/references/{workflow,lock-protocol,obsidian,selectors,templates,iteration}.md`。
+ - `selectors.md`（原 `prompts.md`，0.8.1 重命名）改写：从"调用 `spec_choice.py` 的命令样例"改成"6 个场景的标题/选项常量表 + 输出格式"。
  - `lock-protocol.md` 中锁持有者键改成 `session_id`，与 §3.3 一致。
 9. 新增 `agents/spec-writer.md`（tools: `Read, Write, Edit, Grep, Glob`——无 Bash）。
 10. 更新 5 个 `commands/*.md` 让其与 SKILL.md 一致：

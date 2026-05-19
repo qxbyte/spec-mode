@@ -108,7 +108,7 @@
 ### 6.2 LockHeld 三选项
 
 1. 输出锁状态摘要：`持有者 session_id 前 8 位 + 最近 heartbeat 时间`。
-2. 呈现 `takeover-options` 选择器（类型 A，详见 `references/prompts.md` §(6)）。**无推荐项**——让用户根据对方是否仍活跃自己判断。
+2. 呈现 `takeover-options` 选择器（类型 A，详见 `references/selectors.md` §(6)）。**无推荐项**——让用户根据对方是否仍活跃自己判断。
 3. End turn 等用户选。
 
 | 选项 | 后续操作 |
@@ -192,6 +192,6 @@
 ## 12. 跨文档引用
 
 - 三层文档根目录解析 → `references/obsidian.md`。
-- 选择器三种类型与 `takeover-options` 文本骨架 → `references/prompts.md`。
+- 选择器三种类型与 `takeover-options` 文本骨架 → `references/selectors.md`。
 - phase 切换协议 → `references/workflow.md` §Phase-gate 输出顺序。
 - 写前三重校验在 SKILL.md §Multi-Window + Lock 也有摘要。

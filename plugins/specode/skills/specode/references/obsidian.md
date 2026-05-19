@@ -269,5 +269,5 @@ python3 plugins/specode/scripts/spec_vault.py set --root <path>
 
 - 三层解析的引导文案 → SKILL.md §Document Root Resolution。
 - 锁与多窗口接管 → `references/lock-protocol.md`。
-- 选择器三种类型与具体场景（非 vault 选择场景，如 takeover-options）→ `references/prompts.md`。
+- 选择器三种类型与具体场景（非 vault 选择场景，如 takeover-options）→ `references/selectors.md`。
 - vault 内目录约定与 phase 序列的关系 → `references/workflow.md`。

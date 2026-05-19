@@ -509,6 +509,6 @@ WHEN [condition], THE [system/component] SHALL CONTINUE TO [existing behavior].
 ## 10. 跨文档引用
 
 - phase 序列与 `doc-confirm-*` 选择器 → `references/workflow.md`。
-- 选择器三种类型与场景常量 → `references/prompts.md`。
+- 选择器三种类型与场景常量 → `references/selectors.md`。
 - iteration 子循环的文档累积规则 → `references/iteration.md`。
 - 6 份文档与文档优先纪律的关系 → SKILL.md §Code-Doc Sync Reminders。

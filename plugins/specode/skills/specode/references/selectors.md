@@ -30,6 +30,43 @@
 
 ---
 
+## 类型变体 A+：单选 + 预览（side-by-side 布局）
+
+类型 A 的视觉增强变体——为每个 option 额外传 `preview` 字段后，宿主 UI 自动切到**左右分栏**布局：左侧垂直选项列表，右侧 monospace 渲染当前焦点选项的 preview 内容（markdown，支持多行）。用户在选项间上下移动时，右侧 preview 实时切换，方便**逐项对比具体 artifact**。
+
+**何时考虑**：
+
+- 让用户在多份 UI mockup / 代码片段 / 配置 / 示意图之间挑一份。
+- 文字描述不够直观、需要"看东西做选择"。
+
+**何时不要用**：
+
+- 简单偏好题（label + description 已经说清楚）——徒增视觉负担。
+- 多选场景（`multiSelect=true`）—— 工具仅在单选时支持 preview。
+- 候选不存在可视差异（仅取舍而无具象差别）。
+
+**调用形态**：
+
+```text
+questions:
+  - question: "<具体问题>?"
+    header: "<≤12 字>"
+    multiSelect: false
+    options:
+      - label: "<选项 A 名>"
+        description: "<选项含义/trade-off>"
+        preview: |
+          <多行 markdown / ASCII mock / 代码片段 / 配置示例>
+      - label: "<选项 B 名>"
+        description: "..."
+        preview: |
+          <对应的另一份 artifact>
+```
+
+**当前状态**：8 个固定场景**均未启用** A+ 形态；本节是模板留档，待将来出现"让用户视觉对比 artifact"的 phase-gate 时按本骨架填空即可。如果新增固定场景使用 A+，应同步在 `spec_session.py SELECTOR_PROMPTS` 内加常量并补到下方 8 场景表里。
+
+---
+
 ## 8 个固定场景常量库
 
 下列 8 个固定场景的提示词与 `spec_session.py` 的 `SELECTOR_PROMPTS` 字典内容**逐字一致**——hook 命中 `pending_selector` 时把对应模板替换占位后注入到 `additionalContext`，模型读到后直接调 `AskUserQuestion` 工具。统一采用三段式 YAML 缩进格式（**目的** / **上下文** / **前置动作** / 工具参数 / **约束**）。

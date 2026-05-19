@@ -83,7 +83,7 @@
 
 | 序号 | 你的要求 | 状态 | 证据 |
 |---|---|---|---|
-| 6.1 | 三张截图对应三种类型 | ✅ | A 单列单选 / B 多项串行决策 wizard / C 复选框多选；DESIGN.md §3.7.1-§3.7.3 + references/prompts.md |
+| 6.1 | 三张截图对应三种类型 | ✅ | A 单列单选 / B 多项串行决策 wizard / C 复选框多选；DESIGN.md §3.7.1-§3.7.3 + references/selectors.md |
 | 6.2 | 选择器**不依赖脚本执行**（删除 spec_choice.py） | ✅ | spec_choice.py 在 0.5.0 删除，0.7.0 不复活；SELECTOR_PROMPTS 是 spec_session.py 内的字符串常量库，文本生成由模型负责 |
 | 6.3 | 选项内容**固定到提示词模板**（不让模型每次发挥） | ✅ | spec_session.py L175+ 的 `SELECTOR_PROMPTS: dict[str, str]` 含 11 个 key 的固定文本；每个文本明示"逐字使用"选项标签 |
 | 6.4 | hook 在特定节点触发提示词给模型 | ✅ | `hook_on_user_prompt`（L1146）读 sessions.pending_selector → 查 SELECTOR_PROMPTS[key] → 替换 `<slug>` / `<phase>` 等占位后 emit additionalContext |
@@ -93,9 +93,9 @@
 
 | 序号 | 你的要求 | 状态 | 证据 |
 |---|---|---|---|
-| 6.6 | 选择器以 `AWAITING_USER_CHOICE` 单独一行结尾 | ✅ | references/prompts.md 三类型骨架全部带 sentinel；SKILL.md §Selectors 第一条铁律 |
-| 6.7 | 类型 A/C 末尾保留 `Type something` + `Chat about this` | ✅ | references/prompts.md 类型 A / C 骨架；SKILL.md §Selectors "保留位必须留" |
-| 6.8 | 类型 B 每决策点末项 `Type something` + wizard 整体末段 `Chat about this` | ✅ | references/prompts.md 类型 B 骨架 |
+| 6.6 | 选择器以 `AWAITING_USER_CHOICE` 单独一行结尾 | ✅ | references/selectors.md 三类型骨架全部带 sentinel；SKILL.md §Selectors 第一条铁律 |
+| 6.7 | 类型 A/C 末尾保留 `Type something` + `Chat about this` | ✅ | references/selectors.md 类型 A / C 骨架；SKILL.md §Selectors "保留位必须留" |
+| 6.8 | 类型 B 每决策点末项 `Type something` + wizard 整体末段 `Chat about this` | ✅ | references/selectors.md 类型 B 骨架 |
 | 6.9 | 命令样式在选择器文本内一律 `/specode:*` | ✅ | SELECTOR_PROMPTS 内所有命令引用都是 `/specode:end` / `/specode:spec` 等 |
 
 ---
@@ -127,7 +127,7 @@
 
 | 序号 | 你的要求 | 状态 | 证据 |
 |---|---|---|---|
-| 9.1 | 模板：`─── spec-mode ─── spec: <slug> \| session: <id> \| phase: <phase> \| /end 退出` | ✅ | SKILL.md §Status Footer + references/prompts.md；命令更新为 `/specode:end 退出` |
+| 9.1 | 模板：`─── spec-mode ─── spec: <slug> \| session: <id> \| phase: <phase> \| /end 退出` | ✅ | SKILL.md §Status Footer + references/selectors.md；命令更新为 `/specode:end 退出` |
 | 9.2 | 只读模式追加 `[只读]` 字段 | ✅ | SKILL.md §Status Footer 明示 "只读模式追加 `[只读]` 字段" |
 | 9.3 | session 字段取前 8 位（防泄露完整 ID） | ✅ | SKILL.md "session 字段只显示 session_id 前 8 位" |
 | 9.4 | 每轮响应末尾必输（active 期间） | ✅ | hook_on_user_prompt 注入"🪧 spec-mode 状态行（必须在本响应末尾输出）"提示；SKILL.md §Status Footer 列为硬约束 |
