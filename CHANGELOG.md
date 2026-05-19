@@ -4,6 +4,53 @@
 
 _no entries yet_
 
+## 0.7.3 (2026-05-19)
+
+### Changed — all selector references unified to YAML three-section format
+
+Following 0.7.2 (which rewrote SELECTOR_PROMPTS to the three-section
++ YAML format), this release brings the two **dynamic selectors** in
+`references/obsidian.md` and the **8 static scenarios** in
+`references/prompts.md` to the same format so every selector
+reference across the plugin is visually identical.
+
+Two dynamic selectors updated:
+
+- **§3 multi-vault selection** (when `spec_vault.py detect` finds >1
+  vault and no `obsidianRoot` is set yet) — was Python-call form;
+  now three-section YAML.
+- **§5.1 `/specode:continue` no-slug spec picker** (when
+  `spec_session.py list-specs` returns >0 specs) — was Python-call
+  form; now three-section YAML. Empty list still skips the tool and
+  prompts the user to run `/specode:spec <requirement>` instead.
+
+The 8 static scenarios in `prompts.md` (workflow-choice,
+clarification-{wizard,done}, doc-confirm-{requirements,bugfix,design,
+tasks}, tasks-execution, takeover-options, acceptance-gate,
+iteration-scope) were rewritten from Python-call form to **byte-for-
+byte the same YAML three-section format as SELECTOR_PROMPTS**, with
+the same wrapper section structure (目的 / 上下文 / 前置动作 / 工具参数 /
+约束). The previous "Python-call form and YAML form are equivalent"
+caveat is removed — there is now only one format.
+
+A worked example with three clarification points (login UX scenario)
+was added to §B1 to give the model a concrete reference for wizard
+construction.
+
+### Tests
+
+- All 152 tests pass; no test changes required (snapshots already
+  match the new format after 0.7.2).
+
+### Migration
+
+None. Plugin cache update sufficient:
+
+```sh
+claude plugin marketplace update specode
+claude plugin update specode
+```
+
 ## 0.7.2 (2026-05-19)
 
 ### Changed — SELECTOR_PROMPTS rewritten to three-section + YAML format

@@ -32,202 +32,334 @@
 
 ## 8 个固定场景常量库
 
-### A1 `workflow-choice` — 工作流选择（类型 A）
+下列 8 个固定场景的提示词与 `spec_session.py` 的 `SELECTOR_PROMPTS` 字典内容**逐字一致**——hook 命中 `pending_selector` 时把对应模板替换占位后注入到 `additionalContext`，模型读到后直接调 `AskUserQuestion` 工具。统一采用三段式 YAML 缩进格式（**目的** / **上下文** / **前置动作** / 工具参数 / **约束**）。
 
-**触发**：进入 requirements 前。
+---
 
-```python
-AskUserQuestion(questions=[{
-    "question": "工作流选择 —— 决定走哪条 spec 流程？",
-    "header": "工作流选择",
-    "multiSelect": False,
-    "options": [
-        {"label": "Requirements first",
-         "description": "行为优先的新特性：先把 SHALL 写清楚，再补技术设计。"},
-        {"label": "Technical Design first",
-         "description": "架构约束已知的新特性：先把 design.md 框架定下来，再反推 requirements。"},
-        {"label": "Bugfix",
-         "description": "缺陷修复 / 回归测试：用 bugfix.md（Current/Expected/Unchanged）替代 requirements.md。"},
-    ],
-}])
+### A1 `workflow-choice` — 工作流选择（类型 A 单列单选）
+
+```text
+## 选择器节点：工作流选择
+
+**目的**：用户刚运行 /specode:spec <需求>，已进入 intake 阶段。
+在写 requirements.md / bugfix.md / design.md 之前，先决定走哪条 spec 工作流。
+
+**上下文**：active spec=<slug>，phase=<phase>。
+
+**前置动作（chat 简报，≤2 行）**：写一句"接到需求《<source_text_head>...》，请选择工作流。"
+
+**调用 `AskUserQuestion` 工具**：
+
+questions:
+  - question: "工作流选择 —— 决定走哪条 spec 流程？"
+    header: "工作流选择"
+    multiSelect: false
+    options:
+      - label: "Requirements first"
+        description: "行为优先的新特性：先把 SHALL 写清楚，再补技术设计。"
+      - label: "Technical Design first"
+        description: "架构约束已知的新特性：先把 design.md 框架定下来，再反推 requirements。"
+      - label: "Bugfix"
+        description: "缺陷修复 / 回归测试：用 bugfix.md（Current/Expected/Unchanged）替代 requirements.md。"
+
+**约束**：
+- 调用工具后立即 end turn。
+- 不要在 chat 输出 markdown 列表 / 不要让用户回复编号。
+- 工具自动提供 "Other" + ESC，**禁止**自己加 "Type something" / "Chat about this" 保留位。
 ```
+
+---
 
 ### A2 `clarification-done` — 需求澄清是否完成（类型 A）
 
-**触发**：intake 阶段一轮 `clarification-wizard` 之后。
+```text
+## 选择器节点：需求澄清是否完成？
 
-```python
-AskUserQuestion(questions=[{
-    "question": "需求澄清是否完成？",
-    "header": "澄清完成?",
-    "multiSelect": False,
-    "options": [
-        {"label": "进入下一阶段（推荐）",
-         "description": "用户回答已覆盖所有阻塞项，可开始写 requirements.md / bugfix.md。"},
-        {"label": "继续澄清",
-         "description": "还有未解决的歧义，再发一轮 wizard。"},
-    ],
-}])
+**目的**：上一轮 wizard 用户已回答；判断是否进入 requirements.md / bugfix.md 生成，
+还是再发一轮 wizard 继续澄清。
+
+**上下文**：active spec=<slug>，phase=intake。
+
+**前置动作（chat 简报，≤2 行）**：写一句"已记录用户的 N 个澄清回答，请确认下一步。"
+
+**调用 `AskUserQuestion` 工具**：
+
+questions:
+  - question: "需求澄清是否完成？"
+    header: "澄清完成?"
+    multiSelect: false
+    options:
+      - label: "进入下一阶段（推荐）"
+        description: "用户回答已覆盖所有阻塞项，可开始写 requirements.md / bugfix.md。"
+      - label: "继续澄清"
+        description: "还有未解决的歧义，再发一轮 wizard。"
+
+**约束**：
+- 调用工具后立即 end turn。
+- 不要复述选项 / 不要让用户回复编号。
 ```
+
+---
 
 ### A3 `doc-confirm-{requirements,bugfix,design,tasks}` — 文档确认（类型 A，4 个变体共享结构）
 
-**触发**：对应文档生成 / 更新后。
+`<filename>` / `<phase>` / 简报要点根据变体替换，骨架完全一致。下面以 `doc-confirm-requirements` 为例：
 
-**前置动作**：在 chat 先写 3-8 条**关键变更摘要**（文件路径 + 章节增量 + 未决问题），再调工具。
+```text
+## 选择器节点：requirements.md 文档确认
 
-```python
-# 示例：doc-confirm-requirements
-AskUserQuestion(questions=[{
-    "question": "requirements.md 已生成。下一步？",
-    "header": "需求确认",
-    "multiSelect": False,
-    "options": [
-        {"label": "确认（推荐）",
-         "description": "文档内容符合预期，进入下一 phase。"},
-        {"label": "查看全文",
-         "description": "在 chat 完整 echo 该文档（不进入下一 phase）。"},
-        {"label": "继续沟通",
-         "description": "文档需要修改，告诉你具体怎么改。"},
-    ],
-}])
+**目的**：requirements.md 已生成 / 更新；让用户确认是否进入 design phase，
+或者先看全文 / 继续修改。
+
+**上下文**：active spec=<slug>，phase=<phase>。
+刚生成的文档：<spec_dir>/requirements.md
+
+**前置动作（chat 简报，≤8 行）**：列出 3-8 条**关键变更要点**（文件路径 + 章节增量 + 未决问题）。
+绝对不要 reprint 文档全文。
+
+**调用 `AskUserQuestion` 工具**：
+
+questions:
+  - question: "requirements.md 已生成。下一步？"
+    header: "需求确认"
+    multiSelect: false
+    options:
+      - label: "确认（推荐）"
+        description: "文档内容符合预期，进入下一 phase。"
+      - label: "查看全文"
+        description: "在 chat 完整 echo 该文档（不进入下一 phase）。"
+      - label: "继续沟通"
+        description: "文档需要修改，告诉你具体怎么改。"
+
+**约束**：
+- 调用工具后立即 end turn。
+- 简报必须在工具调用**之前**输出。
 ```
 
-bugfix / design / tasks 三个变体仅 `question`（"bugfix.md 已生成。下一步？" 等）与 `header`（"缺陷确认" / "设计确认" / "任务确认"）替换；选项结构完全一致。
+其余 3 个变体差异：
+
+| key | question | header | 简报要点重心 |
+|---|---|---|---|
+| `doc-confirm-bugfix` | "bugfix.md 已生成。下一步？" | 缺陷确认 | Current/Expected/Unchanged 段落增量 + 复现步骤 + 影响范围 |
+| `doc-confirm-design` | "design.md 已生成。下一步？" | 设计确认 | 架构图变化 + 接口签名 + 数据模型字段 + 风险 / 偏离 |
+| `doc-confirm-tasks` | "tasks.md 已生成。下一步？" | 任务确认 | 任务计数（required / optional）+ 主要阶段 + traceability + 同文件冲突标注 |
+
+---
 
 ### A4 `tasks-execution` — 任务执行选择（类型 A）
 
-**触发**：tasks.md `doc-confirm-tasks` 选"确认"之后。
+```text
+## 选择器节点：任务执行选择
 
-```python
-AskUserQuestion(questions=[{
-    "question": "tasks.md 已确认，怎么执行？",
-    "header": "执行方式",
-    "multiSelect": False,
-    "options": [
-        {"label": "开始 required",
-         "description": "仅执行 required 任务，逐个推进 [ ] → [~] → [x]。"},
-        {"label": "开始 required + optional",
-         "description": "required 完成后顺带处理 optional 任务。"},
-        {"label": "用 task-swarm 多 agent 并发",
-         "description": "委派给 task-swarm 编排器；多 coder 并发 + reviewer + validator 自动 fix loop。"},
-        {"label": "暂不 coding",
-         "description": "文档已落地但暂不开始实现；随时 /specode:end 关闭会话。"},
-    ],
-}])
+**目的**：tasks.md 已确认；选择执行模式（线性 / 含 optional / task-swarm 并发 / 暂不开始）。
+
+**上下文**：active spec=<slug>，phase=tasks。
+required 任务数：<n_required>，optional 任务数：<n_optional>。
+
+**前置动作（chat 简报，≤2 行）**：写一句"tasks.md 已确认（required <N> / optional <M>），请选择执行方式。"
+
+**调用 `AskUserQuestion` 工具**：
+
+questions:
+  - question: "tasks.md 已确认，怎么执行？"
+    header: "执行方式"
+    multiSelect: false
+    options:
+      - label: "开始 required"
+        description: "仅执行 required 任务，逐个推进 [ ] → [~] → [x]。"
+      - label: "开始 required + optional"
+        description: "required 完成后顺带处理 optional 任务。"
+      - label: "用 task-swarm 多 agent 并发"
+        description: "委派给 task-swarm 编排器；多 coder 并发 + reviewer + validator 自动 fix loop。"
+      - label: "暂不 coding"
+        description: "文档已落地但暂不开始实现；随时 /specode:end 关闭会话。"
+
+**约束**：
+- 4 个选项已占满工具上限；用户若想自定义可用 "Other" 输入。
+- 调用工具后立即 end turn。
 ```
+
+---
 
 ### A5 `takeover-options` — 接管选项（类型 A）
 
-**触发**：`/specode:continue <slug>` 调 `spec_session.py acquire` 返回 LockHeld（exit 4）。
+```text
+## 选择器节点：接管选项
 
-**前置动作**：先在 chat 简报锁持有者 session_id 前 8 位 + 最近 heartbeat 时间。
+**目的**：/specode:continue <slug> 命中 LockHeld；让用户选择强制接管 / 只读查看 / 取消。
 
-```python
-AskUserQuestion(questions=[{
-    "question": "该 spec 已被其他 Claude 窗口持有，怎么处理？",
-    "header": "接管选项",
-    "multiSelect": False,
-    "options": [
-        {"label": "强制接管",
-         "description": "驱逐对方锁，本会话成为新锁主；对方下一次写操作会被 verify-lock 拒绝。"},
-        {"label": "只读查看",
-         "description": "不持锁，加载文档进入只读模式；所有 Edit/Write 在 SKILL.md 层面被劝阻。"},
-        {"label": "取消",
-         "description": "不接管，关闭本次 /specode:continue。"},
-    ],
-}])
+**上下文**：active spec=<slug>，phase=<phase>。
+锁持有者: <other_id_short>（前 8 位），最近 heartbeat: <last_heartbeat>。
+
+**前置动作（chat 简报，≤2 行）**：写一句"spec '<slug>' 已被 <other_id_short> 在 <last_heartbeat> 持有，请选择处理方式。"
+
+**调用 `AskUserQuestion` 工具**：
+
+questions:
+  - question: "该 spec 已被其他 Claude 窗口持有，怎么处理？"
+    header: "接管选项"
+    multiSelect: false
+    options:
+      - label: "强制接管"
+        description: "驱逐对方锁，本会话成为新锁主；对方下一次写操作会被 verify-lock 拒绝。"
+      - label: "只读查看"
+        description: "不持锁，加载文档进入只读模式；所有 Edit/Write 在 SKILL.md 层面被劝阻。"
+      - label: "取消"
+        description: "不接管，关闭本次 /specode:continue。"
+
+**约束**：
+- **不给"（推荐）"标记**——让用户根据对方是否仍活跃自己判断。
+- 调用工具后立即 end turn。
 ```
 
-**不给"推荐"标记**——让用户根据对方是否仍活跃自己判断。
+---
 
 ### A6 `acceptance-gate` — 验收门（类型 A）
 
-**触发**：acceptance phase，acceptance-checklist.md 填写完毕。
+```text
+## 选择器节点：验收门
 
-```python
-AskUserQuestion(questions=[{
-    "question": "验收结论？",
-    "header": "验收门",
-    "multiSelect": False,
-    "options": [
-        {"label": "验收通过，进入 iteration（推荐）",
-         "description": "所有 SHALL 已满足；如有后续调整走 iteration 子循环。"},
-        {"label": "继续修改",
-         "description": "仍有未达标项，回到 requirements / design / tasks 调整。"},
-    ],
-}])
+**目的**：acceptance phase；acceptance-checklist.md 已填写，判断是否通过验收进入 iteration，
+或者回到 requirements / design / tasks 继续修改。
+
+**上下文**：active spec=<slug>，phase=acceptance。
+已通过：<n_pass>，未通过 / 待复核：<n_fail>。
+
+**前置动作（chat 简报，≤3 行）**：
+- 列出已通过 / 未通过 / 待复核计数。
+- n_fail > 0 时简列未通过项（≤3 条）。
+
+**调用 `AskUserQuestion` 工具**：
+
+questions:
+  - question: "验收结论？"
+    header: "验收门"
+    multiSelect: false
+    options:
+      - label: "验收通过，进入 iteration（推荐）"
+        description: "所有 SHALL 已满足；如有后续调整走 iteration 子循环。"
+      - label: "继续修改"
+        description: "仍有未达标项，回到 requirements / design / tasks 调整。"
+
+**约束**：
+- n_fail = 0 时推荐选 1；n_fail > 0 时**移除"（推荐）"标记**。
+- 调用工具后立即 end turn。
 ```
-
-`n_fail=0` 时推荐选 1；`n_fail>0` 时**不给推荐**。
 
 ---
 
 ### B1 `clarification-wizard` — 需求澄清问答（类型 B / wizard）
 
-**触发**：intake 阶段，需求有歧义，必须打包多个澄清问题一次性收齐。
+```text
+## 选择器节点：需求澄清问答（wizard）
 
-**关键**：`questions` 数组直接传 2-4 个 question 对象（每个 question 是一个独立的 chip-tab）。每个 question 的 `multiSelect=false`。子问题与选项**由你结合源需求摘要 + 用户最近输入 + `references/templates.md` 章节结构自行生成**——不要凭空 invent 业务规则。
+**目的**：需求有歧义，必须在写 requirements.md / bugfix.md 之前**一次性**收齐
+影响 scope / behavior / UX / data / validation / acceptance 的 2-4 个阻塞性澄清点。
 
-```python
-# 示例：登录页 spec 的澄清 wizard
-AskUserQuestion(questions=[
-    {
-        "question": "登录失败时是否要显示具体原因？",
-        "header": "失败提示",
-        "multiSelect": False,
-        "options": [
-            {"label": "区分密码错 / 账号锁",
-             "description": "对用户更友好但便于撞库探测。"},
-            {"label": "统一显示\"凭据错误\"",
-             "description": "更安全，避开账号枚举。"},
-        ],
-    },
-    {
-        "question": "是否需要忘记密码入口？",
-        "header": "找回密码",
-        "multiSelect": False,
-        "options": [
-            {"label": "需要（邮件链接）", "description": "标准流程；与现有邮件服务集成。"},
-            {"label": "需要（短信验证）", "description": "需要短信通道；适用于移动 first。"},
-            {"label": "不需要（管理员重置）", "description": "内部系统常见；用户找管理员。"},
-        ],
-    },
-    # ... 最多 4 个
-])
-```
+**上下文**：active spec=<slug>，phase=intake。
+源需求摘要：<source_text_head>
 
-约束：
-- 每个子问题必须是"是 / 否 / 选哪条"的具体问题；禁止开放式叙述（"你怎么想"）。
+**前置动作（chat 简报，≤3 行）**：写一句"为避免 invent 业务规则，需要先确认 N 个关键点，请逐一回答。"
+
+**调用 `AskUserQuestion` 工具一次**，`questions` 数组传 **2-4 个 question 对象**
+（每个 question 都是独立的 chip-tab，每个 multiSelect=false）。子问题与选项**由你结合源需求摘要 + 用户最近输入 + assets/templates 章节结构自行生成**——不要凭空 invent 业务规则。
+
+参数格式示例（替换为你针对当前需求生成的具体子问题）：
+
+questions:
+  - question: "<具体决策点 1 标题，必须是'是/否/选哪条'问题>"
+    header: "<≤12 字 chip 标签>"
+    multiSelect: false
+    options:
+      - label: "<选项 A>"
+        description: "<一句话解释 + trade-off>"
+      - label: "<选项 B>"
+        description: "<一句话解释 + trade-off>"
+  - question: "<具体决策点 2>"
+    header: "<chip 标签>"
+    multiSelect: false
+    options:
+      - label: "<选项 A>"
+        description: "..."
+      - label: "<选项 B>"
+        description: "..."
+  # 最多 4 个 question
+
+**约束**：
+- 每个子问题必须是"是/否/选哪条"具体问题；禁止开放式叙述（"你怎么想"）。
 - 子问题之间**无依赖**——若有依赖应拆成两次 wizard。
 - 决策点 ≥ 5 个 → 只保留最阻塞的 4 个，其余记入 requirements.md "待确认问题" 节。
-- 如果连一个阻塞决策点都没有（需求清晰）→ **不输出 wizard**，直接跳到 `clarification-done`。
+- inputs 不足以构成阻塞决策点 → **不调本工具**，直接进 `clarification-done`。
+- 工具自动提供 "Other"，**不要**手工加 "Type something" / "Chat about this" 保留位。
+- 调用工具后立即 end turn。
+```
+
+具体示例（登录页 spec 的 3 个澄清点）：
+
+```text
+questions:
+  - question: "登录失败时是否要显示具体原因？"
+    header: "失败提示"
+    multiSelect: false
+    options:
+      - label: "区分密码错 / 账号锁"
+        description: "对用户更友好；但便于撞库探测，安全性较低。"
+      - label: "统一显示"凭据错误""
+        description: "避开账号枚举攻击；用户体验略差。"
+  - question: "是否需要"忘记密码"入口？"
+    header: "找回密码"
+    multiSelect: false
+    options:
+      - label: "需要（邮件链接）"
+        description: "标准流程；与现有邮件服务集成。"
+      - label: "需要（短信验证）"
+        description: "需要短信通道；适用于移动 first。"
+      - label: "不需要（管理员重置）"
+        description: "内部系统常见；用户找管理员。"
+  - question: "session 有效期？"
+    header: "会话时长"
+    multiSelect: false
+    options:
+      - label: "8 小时（工作时段）"
+        description: "适合纯桌面办公场景；超时强制重登。"
+      - label: "30 天（带'记住我'）"
+        description: "提供 Remember-me checkbox；token 安全级别需要提高。"
+```
 
 ---
 
 ### C1 `iteration-scope` — 本轮 iteration 调整范围（类型 C / 多选）
 
-**触发**：用户从 `acceptance-gate` 选了"验收通过"后进入 iteration 子循环，或显式提出迭代调整范围。
+```text
+## 选择器节点：iteration 调整范围（多选）
 
-```python
-AskUserQuestion(questions=[{
-    "question": "本轮 iteration 要调整哪些文档/动作？（可多选）",
-    "header": "迭代范围",
-    "multiSelect": True,   # ← 关键：唯一一个 multiSelect=true 的场景
-    "options": [
-        {"label": "改 requirements",
-         "description": "新增 / 修改 EARS SHALL 条款。"},
-        {"label": "改 design",
-         "description": "架构 / 接口 / 数据模型调整。"},
-        {"label": "改 tasks",
-         "description": "新增任务或调整已有任务范围。"},
-        {"label": "重跑测试",
-         "description": "不改文档，重新验证当前实现。"},
-    ],
-}])
+**目的**：用户从 acceptance-gate 选了"验收通过"或显式提出迭代调整；确定本轮 iteration 调整哪些文档/动作。
+
+**上下文**：active spec=<slug>，phase=iteration。
+
+**前置动作（chat 简报，≤2 行）**：写一句"进入 iteration 子循环，请选择本轮调整范围（可多选）。"
+
+**调用 `AskUserQuestion` 工具**，注意 **multiSelect=true**：
+
+questions:
+  - question: "本轮 iteration 要调整哪些文档/动作？（可多选）"
+    header: "迭代范围"
+    multiSelect: true
+    options:
+      - label: "改 requirements"
+        description: "新增 / 修改 EARS SHALL 条款。"
+      - label: "改 design"
+        description: "架构 / 接口 / 数据模型调整。"
+      - label: "改 tasks"
+        description: "新增任务或调整已有任务范围。"
+      - label: "重跑测试"
+        description: "不改文档，重新验证当前实现。"
+
+**约束**：
+- multiSelect=true（**唯一**使用类型 C 复选框的场景）。
+- 允许用户全不选（视为本轮 iteration 取消）；ESC 等价。
+- 调用工具后立即 end turn。
 ```
-
-允许用户全不选（视为本轮 iteration 取消）；ESC 等价。
 
 ---
 
@@ -235,31 +367,7 @@ AskUserQuestion(questions=[{
 
 `UserPromptSubmit` 的 `on-user-prompt` hook 在 `sessions/<id>.json.pending_selector` 命中某 key 时，把 `SELECTOR_PROMPTS[key]` 拿出来做字符串替换（`<slug>` / `<phase>` / `<spec_dir>` / `<source_text_head>` 等），包入 `additionalContext` 注入。
 
-实际注入文本采用**三段式 + YAML 缩进**格式（与本文件 §A1-§C1 示例中的 Python-call 形式**等价**，仅书写风格不同；模型应将两种格式都视作"调 `AskUserQuestion` 工具"的同义指令）：
-
-```text
-## 选择器节点：<场景中文名>
-
-**目的**：<为什么呈现这个选择器；用户刚做了什么；下一步要决定什么>
-
-**上下文**：active spec=<slug>，phase=<phase>，<其他动态字段>
-
-**前置动作（chat 简报，≤N 行）**：<本轮工具调用前应先 chat 输出什么>
-
-**调用 `AskUserQuestion` 工具**（注意 multiSelect=...）：
-
-questions:
-  - question: "<完整问句>"
-    header: "<≤12 字 chip>"
-    multiSelect: <true|false>
-    options:
-      - label: "<选项 A>"
-        description: "<一句话>"
-      - label: "<选项 B>"
-        description: "<一句话>"
-
-**约束**：<列出本场景特定的禁区与硬规则>
-```
+实际注入文本采用三段式 YAML 缩进格式（与本文件 §A1-§C1 模板**逐字一致**）：
 
 模型看到注入后**唯一动作**：
 
