@@ -148,10 +148,31 @@ Once an active session is open:
 - The model must render selectors per the three skeletons and emit
   the status footer.
 
+## Session logging (0.10.0+)
+
+specode collects per-session logs to `~/.specode/logs/<session_id>.jsonl`
+by default (hooks, agent tool calls, CLI calls, phase/lock transitions),
+for debugging "why did the agent go off-script" scenarios.
+
+```sh
+# Replay one session's events
+sh "$CLAUDE_PLUGIN_ROOT/scripts/run.sh" \
+   "$CLAUDE_PLUGIN_ROOT/scripts/spec_log.py" replay --session <id>
+
+# Turn off temporarily
+export SPECODE_LOG=off
+
+# Turn off permanently: edit ~/.config/specode/config.json, add "logging": false
+```
+
+Default redact list (`password / api_key / token / …`) + 500-char string
+truncation. Extend via `~/.config/specode/config.json.redact_keys`.
+
 ## Global bypass
 
 ```sh
 SPECODE_GUARD=off   # short-circuits all hooks to exit 0
+SPECODE_LOG=off     # short-circuits session log writes
 ```
 
 For debugging only.

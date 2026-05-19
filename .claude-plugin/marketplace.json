@@ -9,7 +9,7 @@
     {
       "name": "specode",
       "source": "./plugins/specode",
-      "version": "0.9.3",
+      "version": "0.10.0",
       "description": "Specification-driven workflow with advisory hooks, selector prompts, session-bound state, and task-swarm multi-agent orchestration.",
       "homepage": "https://github.com/qxbyte/specode",
       "repository": "https://github.com/qxbyte/specode",

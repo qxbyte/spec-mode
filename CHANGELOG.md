@@ -4,6 +4,107 @@
 
 _no entries yet_
 
+## 0.10.0 (2026-05-20)
+
+### Added — Session 日志收集（默认开启，可关）
+
+新增 `plugins/specode/scripts/spec_log.py` 模块 + 双 hook 通配监听
++ 各 CLI 入口集成，全程收集 spec 模式期间的事件流，便于排查
+"主代理为什么走偏 / 漏 fork spec-writer / 选错 selector" 等问题。
+
+收集的事件类型：
+
+- `hook_invoked` —— 每个 hook（SessionStart / UserPromptSubmit /
+  Stop / SessionEnd / PostToolUse Task / PreToolUse Edit|Write|MultiEdit /
+  on-heartbeat-quiet）触发时
+- `tool_pre` / `tool_post` —— 主代理每次 Bash / Read / Write / Edit /
+  Task 等工具调用前后（PreToolUse `*` + PostToolUse `*` 全通配新 hook）
+- `cli_call` / `cli_exit` —— specode 自身 CLI（spec_session /
+  spec_init / spec_status / task_swarm）被调用前后的 cmd / argv / exit_code
+- `hook_exception` —— hook 内部异常 trace（被 _safe_hook 吞并的，仍记日志）
+
+**存储**：`~/.specode/logs/<session_id>.jsonl`（每行一个 JSON event；
+无 session_id 的事件落 `_orphan.jsonl`）。
+
+**双开关**（默认开启）：
+
+```sh
+# 临时关闭（仅当前 shell）
+export SPECODE_LOG=off
+
+# 永久关闭：编辑 ~/.config/specode/config.json 加
+#   { "logging": false }
+```
+
+env 优先于 config；env 可取 `off / false / 0 / no` 关闭，`on / true / 1 / yes` 强制打开。
+
+**隐私保护**（默认）：
+
+- 字段名 redact 黑名单：`password / passwd / pwd / api_key / apikey /
+  token / access_token / refresh_token / secret / client_secret /
+  authorization / auth / cookie / private_key / ssh_key` 命中即替换为
+  `<redacted>`。可在 config 加 `redact_keys: ["custom_key", …]` 扩展。
+- 字符串字段超 500 字符自动截断（后缀 `...<truncated>`）。
+- 递归深度 >8 → `<deep_truncated>`。
+
+**回放 + 状态查询**：
+
+```sh
+# 按时序打印一个 session 的事件流
+sh "$CLAUDE_PLUGIN_ROOT/scripts/run.sh" \
+   "$CLAUDE_PLUGIN_ROOT/scripts/spec_log.py" replay --session <id>
+
+# 占用查询（输出 enabled / switch_source / 文件数 / 总字节）
+sh "$CLAUDE_PLUGIN_ROOT/scripts/run.sh" \
+   "$CLAUDE_PLUGIN_ROOT/scripts/spec_log.py" status
+```
+
+**rotation 策略**：不自动切片；超过 100MB 时 status 命令提示手动清
+（`rm -rf ~/.specode/logs/`）。session-bound 写入即可控制大小。
+
+**异常隔离**：日志收集任何异常都吞并（spec_log 内部 try/except + 各
+集成点用 contextlib.suppress 包裹），绝不阻断业务流程。失败时主代理
+看不到日志写入痕迹，但 spec / hook / CLI 本身行为完全一致。
+
+### Changed — hooks.json 新增 2 个全通配 hook
+
+`PostToolUse "*"` matcher 和 `PreToolUse "*"` matcher 各加一条 hook，
+分别调 `spec_session.py on-log-post-tool-use / on-log-pre-tool-use`。
+这两个新 hook 仅落日志，不注入 additionalContext，不影响主代理行为。
+原有 `PreToolUse Edit|Write|MultiEdit` 和 `PostToolUse Task` matcher
+保持不变（继续走 `on-pre-tool-use / on-task-completed` 的 advisory
+注入逻辑）。
+
+### Changed — 文档（SKILL.md / CONTRIBUTING.md / README × 2）
+
+- SKILL.md 加 §Session Logging 节，列出存储位置 / 双开关 / 隐私 /
+  回放 / 占用查询。
+- CONTRIBUTING.md 加 §Debugging with session logs 节，给开发者
+  排查问题用 replay 的命令示例 + 新 hook/CLI 子命令应在入口加
+  `_log_event` 的约定。
+- README / README.zh-CN 「Global bypass」节加 `SPECODE_LOG=off`；
+  各自新增 Session logging / 会话日志收集 小节简述用法 + 关闭方式。
+
+### Tests
+
+165 pass (152 previous + 13 new in `test_spec_log.py`)：write_event /
+disabled-via-env / disabled-via-config / redact-default-keys /
+redact-extended-via-config / truncate-long-string / replay /
+replay-missing / status × 3 / hook-invocation-writes-log /
+cli-call-writes-log. 原 152 个测试 0 个破——日志收集是完全 backward-
+compatible 的纯加项。
+
+### Migration
+
+无需迁移。0.10.0 启动后会开始往 `~/.specode/logs/` 写日志；不想要的
+按上面方式关掉。已有 sessions / specs / 锁 / state.json 全部不变。
+
+```sh
+# Adjust the CLI name for whichever host you use (claude / codebuddy).
+claude plugin marketplace update specode
+claude plugin update specode
+```
+
 ## 0.9.3 (2026-05-20)
 
 ### Added — 2 条新 Iron Rule（SKILL.md）

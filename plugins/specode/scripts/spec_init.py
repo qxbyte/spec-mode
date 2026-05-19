@@ -41,6 +41,14 @@ THIS_DIR = Path(__file__).resolve().parent
 if str(THIS_DIR) not in sys.path:
     sys.path.insert(0, str(THIS_DIR))
 
+# 0.10.0+ 日志（defensive import；失败时降级为 no-op）
+try:
+    from spec_log import write_event as _log_event  # type: ignore
+except Exception:
+    def _log_event(event: str, payload: Optional[dict] = None,
+                   session_id: Optional[str] = None) -> None:
+        return None
+
 from spec_vault import resolve_doc_root, _atomic_write_json  # type: ignore  # noqa: E402
 
 
@@ -393,8 +401,25 @@ def main(argv: Optional[list[str]] = None) -> int:
     return 0
 
 
+def _log_wrap_main(argv: Optional[list[str]] = None) -> int:
+    """0.10.0+ 包一层捕捉 cli_call / cli_exit 事件。"""
+    import contextlib as _cl
+    argv_list = list(sys.argv[1:]) if argv is None else list(argv)
+    sid = None
+    for i, a in enumerate(argv_list):
+        if a == "--session" and i + 1 < len(argv_list):
+            sid = argv_list[i + 1]
+            break
+    with _cl.suppress(Exception):
+        _log_event("cli_call", {"script": "spec_init.py", "argv_len": len(argv_list)}, session_id=sid)
+    rc = main(argv)
+    with _cl.suppress(Exception):
+        _log_event("cli_exit", {"script": "spec_init.py", "exit_code": rc}, session_id=sid)
+    return rc
+
+
 if __name__ == "__main__":
     try:
-        sys.exit(main())
+        sys.exit(_log_wrap_main())
     except KeyboardInterrupt:
         sys.exit(130)

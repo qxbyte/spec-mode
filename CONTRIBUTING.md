@@ -109,6 +109,32 @@ Conventions:
   fallback (existing files keep working). Bump **major** if a
   rename breaks reads.
 
+## Debugging with session logs (0.10.0+)
+
+specode 默认收集每个 session 的日志到 `~/.specode/logs/<session_id>.jsonl`，
+含 hook 触发、主代理工具调用、CLI 调用、phase / lock 变化。
+
+```sh
+# 回放一个 session 的事件流（按时序）
+sh "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh" \
+   "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/spec_log.py" \
+   replay --session <session_id>
+
+# 查看 logs/ 占用
+sh "$CLAUDE_PLUGIN_ROOT/scripts/run.sh" \
+   "$CLAUDE_PLUGIN_ROOT/scripts/spec_log.py" status
+
+# 临时关日志
+export SPECODE_LOG=off
+
+# 永久关：编辑 ~/.config/specode/config.json 加 "logging": false
+```
+
+排查"主代理为什么走偏"类问题时，用 replay 看 hook 时序 + 工具调用顺序，
+通常能定位到「该呈现 selector 没呈现」「fork spec-writer 漏了」「Status
+字段被越权改」之类的违规点。新增 hook / CLI 子命令时记得在入口加
+`_log_event("event_name", payload, session_id)`，便于日后调试。
+
 ## Performance budget (guideline)
 
 | Hook | Budget |

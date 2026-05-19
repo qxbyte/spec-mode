@@ -112,10 +112,32 @@ rm -rf ~/.specode ~/.config/specode
 - 每次模型 turn 结束时注入代码-文档同步提醒。
 - 模型必须按三种类型骨架渲染选择器，并在响应末尾输出状态行 footer。
 
+## 会话日志收集（0.10.0+）
+
+specode 默认把每个 session 的事件流写到 `~/.specode/logs/<session_id>.jsonl`
+（含 hook 触发、主代理工具调用、specode CLI 调用、phase/lock 变化），
+便于排查"主代理为什么走偏 / 漏 fork spec-writer / 选错 selector"等问题。
+
+```sh
+# 回放一个 session
+sh "$CLAUDE_PLUGIN_ROOT/scripts/run.sh" \
+   "$CLAUDE_PLUGIN_ROOT/scripts/spec_log.py" replay --session <id>
+
+# 临时关
+export SPECODE_LOG=off
+
+# 永久关：编辑 ~/.config/specode/config.json 加 "logging": false
+```
+
+默认 redact 黑名单（`password / api_key / token / …`）+ 字符串字段自动
+截断到 500 字符。可通过 `~/.config/specode/config.json.redact_keys`
+扩展黑名单。
+
 ## 全局 bypass
 
 ```sh
 SPECODE_GUARD=off   # 让所有 hook 立即 exit 0
+SPECODE_LOG=off     # 让 session 日志不写入
 ```
 
 仅作调试用。

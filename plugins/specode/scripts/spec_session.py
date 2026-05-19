@@ -39,6 +39,16 @@ from typing import Any, Optional
 
 THIS_DIR = Path(__file__).resolve().parent
 
+# spec_log 是兄弟脚本（同目录），通过 sys.path 注入以便 import；失败时降级为 no-op
+if str(THIS_DIR) not in sys.path:
+    sys.path.insert(0, str(THIS_DIR))
+try:
+    from spec_log import write_event as _log_event  # type: ignore
+except Exception:
+    def _log_event(event: str, payload: Optional[dict] = None,
+                   session_id: Optional[str] = None) -> None:
+        return None
+
 # -------------------------------------------------------------------------
 # 常量
 # -------------------------------------------------------------------------
@@ -1268,6 +1278,9 @@ def _safe_hook(fn):
     def wrapper(args: argparse.Namespace) -> int:
         if _bypass_active():
             return 0
+        # log hook invocation（0.10.0+；日志失败不阻断 hook）
+        with contextlib.suppress(Exception):
+            _log_event("hook_invoked", {"hook": fn.__name__}, session_id=None)
         try:
             fn(args)
         except SystemExit:
@@ -1277,8 +1290,35 @@ def _safe_hook(fn):
                 # 写一份本地 trace 便于排查；忽略 IO 错误
                 err = traceback.format_exc()
                 sys.stderr.write(f"specode hook 异常已吞并：\n{err}\n")
+                _log_event("hook_exception", {"hook": fn.__name__, "trace_head": err[:500]}, session_id=None)
         return 0
     return wrapper
+
+
+# -------------------------------------------------------------------------
+# 0.10.0+ 工具调用日志 hook（PreToolUse / PostToolUse 全通配，仅落日志）
+# -------------------------------------------------------------------------
+
+@_safe_hook
+def hook_on_log_pre_tool_use(args: argparse.Namespace) -> None:
+    """PreToolUse 全通配 hook：抓主代理每个工具调用前的 payload。仅落日志，不注入。"""
+    payload = _read_stdin_payload()
+    session_id = payload.get("session_id") or payload.get("sessionId") or args.session_override
+    _log_event("tool_pre", {
+        "tool_name": payload.get("tool_name") or payload.get("toolName"),
+        "tool_input": payload.get("tool_input") or payload.get("toolInput"),
+    }, session_id=session_id)
+
+
+@_safe_hook
+def hook_on_log_post_tool_use(args: argparse.Namespace) -> None:
+    """PostToolUse 全通配 hook：抓主代理每个工具调用后的 payload。仅落日志，不注入。"""
+    payload = _read_stdin_payload()
+    session_id = payload.get("session_id") or payload.get("sessionId") or args.session_override
+    _log_event("tool_post", {
+        "tool_name": payload.get("tool_name") or payload.get("toolName"),
+        "tool_response_head": str(payload.get("tool_response") or payload.get("toolResponse") or "")[:300],
+    }, session_id=session_id)
 
 
 # ---- on-session-start ----
@@ -1897,6 +1937,8 @@ def _build_parser() -> argparse.ArgumentParser:
         "on-task-completed",
         "on-heartbeat-quiet",
         "on-pre-tool-use",
+        "on-log-pre-tool-use",
+        "on-log-post-tool-use",
     ):
         ph = sub.add_parser(name)
         ph.add_argument("--session-override", default=None,
@@ -1926,6 +1968,8 @@ COMMANDS = {
     "on-task-completed": hook_on_task_completed,
     "on-heartbeat-quiet": hook_on_heartbeat_quiet,
     "on-pre-tool-use": hook_on_pre_tool_use,
+    "on-log-pre-tool-use": hook_on_log_pre_tool_use,
+    "on-log-post-tool-use": hook_on_log_post_tool_use,
 }
 
 
@@ -1936,7 +1980,25 @@ def main(argv: Optional[list[str]] = None) -> int:
     if fn is None:
         parser.print_help()
         return 1
-    return fn(args) or 0
+    # log cli 调用（0.10.0+；只记业务命令，hook 调用由 _safe_hook 已记）
+    if not args.cmd.startswith("on-"):
+        with contextlib.suppress(Exception):
+            session_id = getattr(args, "session", None) or getattr(args, "session_override", None)
+            _log_event("cli_call", {
+                "script": "spec_session.py",
+                "cmd": args.cmd,
+                "spec": getattr(args, "spec", None),
+                "phase_from": getattr(args, "frm", None),
+                "phase_to": getattr(args, "to", None),
+                "force": getattr(args, "force", False),
+                "readonly": getattr(args, "readonly", False),
+            }, session_id=session_id)
+    rc = fn(args) or 0
+    if not args.cmd.startswith("on-"):
+        with contextlib.suppress(Exception):
+            session_id = getattr(args, "session", None) or getattr(args, "session_override", None)
+            _log_event("cli_exit", {"script": "spec_session.py", "cmd": args.cmd, "exit_code": rc}, session_id=session_id)
+    return rc
 
 
 if __name__ == "__main__":

@@ -209,6 +209,18 @@ never paste 文档正文、EARS SHALL 全集、代码块、完整任务列表、
 - `references/task-swarm.md` — task-swarm 编排协议、角色边界、产物 schema、writeback 格式
 - `references/task-swarm-example.md` — 完整 tasks.md 示例
 
+## Session Logging（0.10.0+）
+
+specode 自带**会话日志收集**，默认开启。日志内容：每个 hook 触发、主代理工具调用（Bash / Read / Write / Edit 等）的 tool_input / tool_response、specode CLI 调用的 cmd / argv / exit_code、session phase / lock 状态变化。**用途**：排查"主代理为什么走偏 / 选错 selector / 漏 fork spec-writer"等问题时回溯现场，配合截图反馈给开发者。
+
+- **存储位置**：`~/.specode/logs/<session_id>.jsonl`（每行一个 JSON event）
+- **关闭**：`export SPECODE_LOG=off` 临时关 / 编辑 `~/.config/specode/config.json` 设 `"logging": false` 永久关
+- **隐私**：默认 redact 黑名单（`password / api_key / token / secret / authorization / cookie` 等键名匹配 → 占位 `<redacted>`）；字符串字段超 500 字符自动截断；可在 config 加 `redact_keys` 列表扩展
+- **回放**：`sh "$CLAUDE_PLUGIN_ROOT/scripts/run.sh" "$CLAUDE_PLUGIN_ROOT/scripts/spec_log.py" replay --session <id>` 按时序打印 events
+- **占用查询**：`spec_log.py status` 输出当前 `~/.specode/logs/` 大小；超过 100MB 会提示手动清理 `rm -rf ~/.specode/logs/`
+
+日志收集任何异常都吞并，绝不阻断业务流程。
+
 ## Iron Rules
 
 1. **持久会话是唯一模式**——`/specode:end` 是退出口；不退出 hook 永远继续注入。

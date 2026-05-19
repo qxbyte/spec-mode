@@ -33,6 +33,14 @@ if str(THIS_DIR) not in sys.path:
     sys.path.insert(0, str(THIS_DIR))
 
 from task_swarm_parse_md import parse_tasks_md, group_by_file_conflict  # noqa: E402
+
+# 0.10.0+ 日志（defensive import）
+try:
+    from spec_log import write_event as _log_event  # type: ignore
+except Exception:
+    def _log_event(event: str, payload: Optional[dict] = None,
+                   session_id: Optional[str] = None) -> None:
+        return None
 from task_swarm_state import StateMachine, StageEntry, _atomic_write_json  # noqa: E402
 from task_swarm_outbox import (  # noqa: E402
     ParseError, parse_coder_result, parse_reviewer_review, parse_validator_validation,
@@ -1326,8 +1334,24 @@ def main(argv: Optional[list[str]] = None) -> int:
     return fn(args) or 0
 
 
+def _log_wrap_main(argv: Optional[list[str]] = None) -> int:
+    argv_list = list(sys.argv[1:]) if argv is None else list(argv)
+    sid = None
+    for i, a in enumerate(argv_list):
+        if a == "--session" and i + 1 < len(argv_list):
+            sid = argv_list[i + 1]
+            break
+    sub_cmd = argv_list[0] if argv_list else "?"
+    with contextlib.suppress(Exception):
+        _log_event("cli_call", {"script": "task_swarm.py", "cmd": sub_cmd, "argv_len": len(argv_list)}, session_id=sid)
+    rc = main(argv)
+    with contextlib.suppress(Exception):
+        _log_event("cli_exit", {"script": "task_swarm.py", "cmd": sub_cmd, "exit_code": rc}, session_id=sid)
+    return rc
+
+
 if __name__ == "__main__":
     try:
-        sys.exit(main())
+        sys.exit(_log_wrap_main())
     except KeyboardInterrupt:
         sys.exit(130)

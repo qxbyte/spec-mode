@@ -24,6 +24,14 @@ if str(THIS_DIR) not in sys.path:
 
 from spec_session import read_session, read_spec_config, _session_short, _is_lock_stale  # type: ignore  # noqa: E402
 
+# 0.10.0+ 日志（defensive import）
+try:
+    from spec_log import write_event as _log_event  # type: ignore
+except Exception:
+    def _log_event(event: str, payload: Optional[dict] = None,
+                   session_id: Optional[str] = None) -> None:
+        return None
+
 
 CHECKBOX_RE = re.compile(r"^\s*[-*]\s*\[(.)\]\s+", re.MULTILINE)
 
@@ -133,8 +141,24 @@ def main(argv: Optional[list[str]] = None) -> int:
     return 0
 
 
+def _log_wrap_main(argv: Optional[list[str]] = None) -> int:
+    import contextlib as _cl
+    argv_list = list(sys.argv[1:]) if argv is None else list(argv)
+    sid = None
+    for i, a in enumerate(argv_list):
+        if a == "--session" and i + 1 < len(argv_list):
+            sid = argv_list[i + 1]
+            break
+    with _cl.suppress(Exception):
+        _log_event("cli_call", {"script": "spec_status.py", "argv_len": len(argv_list)}, session_id=sid)
+    rc = main(argv)
+    with _cl.suppress(Exception):
+        _log_event("cli_exit", {"script": "spec_status.py", "exit_code": rc}, session_id=sid)
+    return rc
+
+
 if __name__ == "__main__":
     try:
-        sys.exit(main())
+        sys.exit(_log_wrap_main())
     except KeyboardInterrupt:
         sys.exit(130)
